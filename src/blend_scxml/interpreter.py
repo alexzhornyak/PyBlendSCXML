@@ -37,6 +37,7 @@ from .node import (
 
 from .datastructures import OrderedSet
 from .eventprocessor import Event, ScxmlOriginType
+from timeit import default_timer as timer
 # FIXME: from .louie import dispatcher
 
 
@@ -51,8 +52,10 @@ class Interpreter(object):
         self.cancelled = False
         self.configuration = OrderedSet()
 
+        self.sleep_timeout = 0.001
         self.internalQueue = queue.Queue()
         self.externalQueue = queue.Queue()
+        self.externalQueueGuard = False
 
         self.statesToInvoke = OrderedSet()
         self.historyValue = {}
@@ -60,6 +63,8 @@ class Interpreter(object):
         self.invokeId = None
         self.parentId = None
         self.logger = None
+
+        self.enabledTransitions = None
 
     def interpret(self, document, invokeId=None):
         '''Initializes the interpreter given an SCXMLDocument instance'''
@@ -75,44 +80,49 @@ class Interpreter(object):
         self.enterStates([transition])
 
     def mainEventLoop(self):
-        while self.running:
-            enabledTransitions = None
-            stable = False
+        if self.running:
+            # print(">>> loop", timer())
 
-            # now take any newly enabled null transitions and any transitions triggered by internal events
-            while self.running and not stable:
-                enabledTransitions = self.selectEventlessTransitions()
-                if not enabledTransitions:
-                    if self.internalQueue.empty():
-                        stable = True
-                    else:
-                        internalEvent = self.internalQueue.get()  # this call returns immediately if no event is available
+            if not self.externalQueueGuard:
+                self.enabledTransitions = None
+                stable = False
 
-                        self.logger.info("internal event found: %s", internalEvent.name)
+                # now take any newly enabled null transitions and any transitions triggered by internal events
+                while self.running and not stable:
+                    self.enabledTransitions = self.selectEventlessTransitions()
+                    if not self.enabledTransitions:
+                        if self.internalQueue.empty():
+                            stable = True
+                        else:
+                            internalEvent = self.internalQueue.get()  # this call returns immediately if no event is available
 
-                        self.dm["__event"] = internalEvent
-                        enabledTransitions = self.selectTransitions(internalEvent)
+                            self.logger.info("internal event found: %s", internalEvent.name)
 
-                if enabledTransitions:
-                    self.microstep(enabledTransitions)
+                            self.dm["__event"] = internalEvent
+                            self.enabledTransitions = self.selectTransitions(internalEvent)
 
-            for state in self.statesToInvoke:
-                for inv in state.invoke:
-                    inv.invoke(inv)
-            self.statesToInvoke.clear()
+                    if self.enabledTransitions:
+                        self.microstep(self.enabledTransitions)
 
-            if not self.internalQueue.empty():
-                continue
+                for state in self.statesToInvoke:
+                    for inv in state.invoke:
+                        inv.invoke(inv)
+                self.statesToInvoke.clear()
 
-            externalEvent = self.externalQueue.get()  # this call blocks until an event is available
+                if not self.internalQueue.empty():
+                    return self.sleep_timeout
 
-#            if externalEvent.name == "cancel.invoke.%s" % self.dm.sessionid:
-#                continue
+            if self.externalQueue.empty():
+                self.externalQueueGuard = True
+                return self.sleep_timeout
+            else:
+                self.externalQueueGuard = False
+                externalEvent = self.externalQueue.get()  # this call blocks until an event is available
 
             # our parent session also might cancel us.  The mechanism for this is platform specific,
             if isCancelEvent(externalEvent):
                 self.running = False
-                continue
+                return self.sleep_timeout
 
             self.logger.info("external event found: %s", externalEvent.name)
 
@@ -125,12 +135,14 @@ class Interpreter(object):
                     if inv.autoforward:
                         inv.send(externalEvent)
 
-            enabledTransitions = self.selectTransitions(externalEvent)
-            if enabledTransitions:
-                self.microstep(enabledTransitions)
+            self.enabledTransitions = self.selectTransitions(externalEvent)
+            if self.enabledTransitions:
+                self.microstep(self.enabledTransitions)
 
-        # if we get here, we have reached a top-level final state or some external entity has set running to False
-        self.exitInterpreter()
+            return self.sleep_timeout
+        else:
+            # if we get here, we have reached a top-level final state or some external entity has set running to False
+            self.exitInterpreter()
 
     def exitInterpreter(self):
         statesToExit = sorted(self.configuration, key=exitOrder)
@@ -397,7 +409,7 @@ class Interpreter(object):
             toQueue = self.externalQueue
         evt = Event(name, data, invokeid, sendid=sendid, eventtype=eventtype)
         evt.origin = "#_scxml_" + self.dm.sessionid
-        evt.origintype = ScxmlOriginType()  # XXX if not isinstance(self.dm, ECMAScriptDataModel) else "http://www.w3.org/TR/scxml/#SCXMLEventProcessor"
+        evt.origintype = ScxmlOriginType()
         evt.raw = raw
         # TODO: and for ecmascript?
         evt.language = language

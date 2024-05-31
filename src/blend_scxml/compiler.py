@@ -19,6 +19,8 @@ This file is part of pyscxml.
 
 '''
 
+import bpy
+
 from .node import (
     Final,
     History,
@@ -64,6 +66,7 @@ from queue import Queue
 # import eventlet
 # from scxml.datastructures import Nodeset
 import xml.dom.minidom as minidom
+from .dotsi import Dict
 
 
 def prepend_ns(tag):
@@ -108,7 +111,7 @@ class Compiler(object):
 
         #        self.setSessionId()
         # used by data passed to invoked processes
-        self.initData = {}
+        self.initData = Dict()
         self.script_src = {}
         self.datamodel = None
         #        self.sourceline_mapping = {}
@@ -140,9 +143,7 @@ class Compiler(object):
         else:
             try:
                 stringify = {
-                    "xpath": "string",
-                    "python": "str",
-                    "ecmascript": "String"
+                    "python": "str"
                 }
                 expr = elem.get(attr + "expr")
 
@@ -223,7 +224,7 @@ class Compiler(object):
                 elif node_name == "cancel":
                     sendid = self.parseAttr(node, "sendid")
                     if sendid in self.timer_mapping:
-                        # FIXME: eventlet.greenthread.cancel(self.timer_mapping[sendid])
+                        bpy.app.timers.unregister(self.timer_mapping[sendid])
                         del self.timer_mapping[sendid]
                 elif node_name == "assign":
                     try:
@@ -301,7 +302,7 @@ class Compiler(object):
                     try:
                         multisession = self.dm.sessions
                         sm = multisession.make_session(self.parseAttr(node, "sessionid"), xml)
-                        sm.compiler.initData = dict(data)
+                        sm.compiler.initData = Dict(data)
                         sm.start_threaded()
                         timeout = self.parseCSSTime(self.parseAttr(node, "timeout", "0s"))
                         if timeout:
@@ -422,7 +423,7 @@ class Compiler(object):
         try:
             raw = self.parseData(sendNode, forSend=True)
             try:
-                data = dict(raw)
+                data = Dict(raw)
             except Exception:
                 # data is not key/value pair
                 data = raw
@@ -439,7 +440,7 @@ class Compiler(object):
         scxmlSendType = ("http://www.w3.org/TR/scxml/#SCXMLEventProcessor", "scxml")
         httpSendType = ("http://www.w3.org/TR/scxml/#BasicHTTPEventProcessor", "basichttp")
 
-        from .pyscxml import StateMachine
+        from .py_blend_scxml import StateMachine
 
         if (type in scxmlSendType or type in httpSendType) and not target:
             # TODO: a shortcut, we're sending without eventprocessors no matter
@@ -511,10 +512,9 @@ class Compiler(object):
             raise SendExecutionError(
                 f"delay format error: the delay attribute should be specified using the CSS time format, you supplied the faulty value: {delay}")
 
-        # TOOD: check for communication errors here. consider using the sender as a async worker.
         if delay:
-            # FIXME
-            # self.timer_mapping[sendid] = eventlet.spawn_after(delay, sender)
+            self.timer_mapping[sendid] = sender
+            bpy.app.timers.register(sender, first_interval=delay)
             pass
         else:
             try:
@@ -600,7 +600,7 @@ class Compiler(object):
                             if self.datamodel == "xpath" and not all(map(lambda x: type(x) is tuple, data)):
                                 return data
                             try:
-                                return dict(data)
+                                return Dict(data)
                             except (TypeError, ValueError):
                                 # NOTE: not key/value data, probably from <content>
                                 return data
@@ -712,9 +712,7 @@ class Compiler(object):
                     def onCreated(sender, sm):
                         sessionid = sm.sessionid
                         self.dm.sessions.make_session(sessionid, sm)
-                    # XXX self.dm["_x"]["sessions"][sessionid] = inv
-                    # FIXME: dispatcher.connect(onCreated, "created", inv, weak=False)
-                inv.start(self.dm.sessionid)
+                inv.start(self.dm.sessionid, onCreated)
             except Exception as e:
                 # XXX del self.dm["_x"]["sessions"][sessionid]
                 xml_str = etree.tostring(node, encoding='unicode')
@@ -756,7 +754,7 @@ class Compiler(object):
 
         scxmlType = ["http://www.w3.org/TR/scxml", "scxml"]
         if invtype.strip("/") in scxmlType:
-            inv = InvokeSCXML(dict(data))
+            inv = InvokeSCXML(Dict(data))
             contentNode = node.find(prepend_ns("content"))
             if contentNode is not None:
                 cnt = self.parseContent(contentNode)
@@ -767,7 +765,7 @@ class Compiler(object):
                     if len(cnt) == 0:
                         xml_str = etree.tostring(node, encoding='unicode')
                         raise InvokeError("Line %s: The invoke content is empty." % xml_str)
-                    if cnt[0].xpath("local-name()") != "scxml":
+                    if cnt[0].tag != prepend_ns("scxml"):
                         xml_str = etree.tostring(node, encoding='unicode')
                         raise InvokeError("Line %s: The invoke content is invalid for content: \n%s" %
                                           (xml_str, etree.tostring(cnt[0])))
@@ -876,19 +874,14 @@ class Compiler(object):
             self.dm[key] = value
 
     def addDefaultNamespace(self, xmlStr):
-        # FIXME
-        # root = etree.fromstring(xmlStr)
-        # warnmsg = (
-        #     "Your document lacks the correct "
-        #     "default namespace declaration. It has been added for you, for parsing purposes.")
+        root: etree.Element = etree.fromstring(xmlStr)
+        warnmsg = (
+            "Your document lacks the correct "
+            "default namespace declaration. It has been added for you, for parsing purposes.")
 
-        
-        # if root.nsmap.get(None) and root.nsmap.get(None) == "":
-        #     print(re.sub("xmlns=[\"'][\"']", "xmlns='http://www.w3.org/2005/07/scxml'", xmlStr))
-        #     return re.sub("xmlns=[\"'][\"']", "xmlns='http://www.w3.org/2005/07/scxml'", xmlStr)
-        # elif not root.nsmap.get(None) or not root.nsmap[None] == "http://www.w3.org/2005/07/scxml":
-        #     self.logger.warn(warnmsg)
-        #     return xmlStr.replace("<scxml", "<scxml xmlns='http://www.w3.org/2005/07/scxml'", 1)
+        if "scxml" in root.tag and root.tag != prepend_ns("scxml"):
+            self.logger.warn(warnmsg)
+            return xmlStr.replace("<scxml", "<scxml xmlns='http://www.w3.org/2005/07/scxml'", 1)
 
         return xmlStr
 

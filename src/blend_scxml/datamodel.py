@@ -16,6 +16,7 @@ from .errors import (
 )
 # import logging
 import xml.dom.minidom as minidom
+from .dotsi import Dict
 
 
 assignOnce = ["_sessionid", "_x", "_name", "_ioprocessors"]
@@ -80,30 +81,38 @@ class ImperativeDataModel(object):
             else:
                 return node.toxml()
 
+        t_content = list(map(f, domNode.childNodes))
+
+        # NOTE: WARNING! We will use variant 2 to perform checks
+        # see: https://alexzhornyak.github.io/SCXML-tutorial/Doc/datamodel.html#warning-be-careful-of-assigning-complex-objects-or-functions-via-in-line-content-of-data
+        try:
+            s_expr = ("\n".join(t_content)).strip()
+            if s_expr:
+                return self.evalExpr(s_expr)
+        except Exception:
+            pass
+
         contentStr = " ".join(map(f, domNode.childNodes))
 
-        #        if domNode.nodeType == domNode.CDATA_SECTION_NODE:
-        #            return contentNode.text
-        #        else:
         return re.sub(r"\s+", " ", contentStr).strip()
 
 
-class PythonDataModel(dict, ImperativeDataModel):
+class PythonDataModel(Dict, ImperativeDataModel):
     '''The default Python Datamodel'''
     def __init__(self, *args, **kwargs):
-        dict.__init__(self, *args, **kwargs)
+        Dict.__init__(self, *args, **kwargs)
 
     def __setitem__(self, key, val):
         if (key in assignOnce and key in self) or key in hidden or not self.isLegalName(key):
             raise DataModelError("You can't assign to the name '%s'." % key)
         else:
-            dict.__setitem__(self, key, val)
+            Dict.__setitem__(self, key, val)
 
     def __getitem__(self, key):
         # NOTE: raises keyerror
         if key in hidden:
-            return dict.__getitem__(self, "_" + key)
-        return dict.__getitem__(self, key)
+            return Dict.__getitem__(self, "_" + key)
+        return Dict.__getitem__(self, key)
 
     def hasLocation(self, location):
         try:
@@ -131,10 +140,9 @@ class PythonDataModel(dict, ImperativeDataModel):
                 s_expr = contentNode.get("expr")
                 output = self.evalExpr(f"({s_expr})")
             elif len(contentNode) == 0:
-                # XXX output = contentNode.xpath("./text()")
                 output = self.normalizeContent(contentNode)
             elif len(contentNode) > 0:
-                output = contentNode.xpath("./*")
+                output = contentNode.findall("*")
             else:
                 xml_str = etree.tostring(contentNode, encoding='unicode')
                 self.logger.error("Line %s: error when parsing content node." % xml_str)

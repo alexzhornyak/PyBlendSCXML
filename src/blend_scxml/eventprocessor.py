@@ -8,6 +8,7 @@ Created on Dec 6, 2010
 import xml.etree.ElementTree as etree
 
 import pickle
+from .dotsi import Dict
 
 
 class SCXMLEventProcessor(object):
@@ -64,7 +65,7 @@ class SCXMLEventProcessor(object):
 
         xml = etree.fromstring(xmlstr)
 
-        data = {}
+        data = Dict()
         for prop in xml.getiterator("{http://www.w3.org/2005/07/scxml}property"):
             if xml.get("language") == "json":
                 import json

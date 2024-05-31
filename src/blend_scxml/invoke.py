@@ -17,6 +17,9 @@ This file is part of pyscxml.
     @author Johan Roxendal
     @contact: johan@roxendal.com
 '''
+
+import bpy
+
 import logging
 
 # FIXME: from .louie import dispatcher
@@ -73,9 +76,11 @@ class InvokeSCXML(BaseInvoke):
         self.initData = data
         self.cancelled = False
         self.default_datamodel = "python"
+        self.onCreated = None
 
-    def start(self, parentId):
+    def start(self, parentId, onCreated):
         self.parentId = parentId
+        self.onCreated = onCreated
         if self.src:
             self.getter.get_async(self.src, None)
         else:
@@ -84,7 +89,7 @@ class InvokeSCXML(BaseInvoke):
     def _start(self, doc):
         if self.cancelled:
             return
-        from .pyscxml import StateMachine
+        from .py_blend_scxml import StateMachine
 
         self.sm = StateMachine(
             doc,
@@ -97,9 +102,10 @@ class InvokeSCXML(BaseInvoke):
         self.sm.compiler.initData = self.initData
         self.sm.compiler.parentId = self.parentId
         self.sm.interpreter.parentId = self.parentId
-        # FIXME: dispatcher.send("created", sender=self, sm=self.sm)
+        self.onCreated(self, self.sm)
+
         self.sm._start_invoke(self.invokeid)
-        # FIXME: eventlet.spawn(self.sm.interpreter.mainEventLoop)
+        bpy.app.timers.register(self.sm.interpreter.mainEventLoop)
 
     def send(self, eventobj):
         if self.sm and not self.sm.isFinished():

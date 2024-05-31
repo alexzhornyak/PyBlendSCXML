@@ -18,19 +18,19 @@ This file is part of PySCXML.
     @contact: johan@roxendal.com
 '''
 
-from . import compiler
-from .interpreter import Interpreter
+import bpy
+
 # FIXME: from .louie import dispatcher
 import logging
 import os
 import errno
 import re
+
 # from eventprocessor import Event
 from .messaging import get_path
 from xml.etree import ElementTree as etree
-# import sys
-# import time
-from .interpreter import CancelEvent
+from . import compiler
+from .interpreter import Interpreter, CancelEvent
 
 
 def default_logfunction(label, msg):
@@ -60,33 +60,6 @@ class StateMachine(object):
     '''
 
     def __init__(self, source, log_function=default_logfunction, sessionid=None, default_datamodel="python", setup_session=True):
-        '''
-        @param source: the scxml document to parse. source may be either:
-
-            uri : similar to what you'd write to the open() function. The
-            difference is, StateMachine looks in the PYSCXMLPATH environment variable
-            for documents if none can be found at ".". As such, it's similar to the PYTHONPATH
-            environment variable. Set the PYSCXMLPATH variable to exert more fine-grained control
-            over the src attribute of <invoke>. self.filename and self.filedir are set as a result.
-
-            xml string: if source is an xml string, it's executed as is.
-            self.filedir and self.filename aren't filled.
-
-            file-like object: if source has the .read() method,
-            the result of that method will be executed.
-
-        @param log_function: the function to execute on a <log /> element.
-        signature is f(label, msg), where label is a string and msg a string.
-        @param sessionid: is stored in the _session variable. Will be automatically
-        generated if not provided.
-        @param default_datamodel: if omitted, any document started by this instance will have
-        its datamodel expressions evaluated as Python expressions. Set to 'ecmascript' to assume
-        EMCAScript expressions.
-        @param setup_session: for internal use.
-        @raise IOError
-        @raise xml.parsers.expat.ExpatError
-        '''
-
         self.is_finished = False
         self.filedir = None
         self.filename = None
@@ -115,7 +88,11 @@ class StateMachine(object):
     def _open_document(self, uri):
         if hasattr(uri, "read"):
             return uri.read()
-        elif isinstance(uri, str) and re.search("<(.+:)?scxml", uri):  # NOTE: "<scxml" in uri:
+
+        if isinstance(uri, bytes):
+            uri = uri.decode(encoding="utf-8")
+
+        if isinstance(uri, str) and re.search("<(.+:)?scxml", uri):  # NOTE: "<scxml" in uri:
             self.filename = "<string source>"
             self.filedir = None
             return uri
@@ -147,13 +124,11 @@ class StateMachine(object):
             doc = os.path.join(self.filedir, self.filename) if self.filedir else ""
             self.logger.info("Starting %s" % doc)
         self._start()
-        self.interpreter.mainEventLoop()
+        bpy.app.timers.register(self.interpreter.mainEventLoop)
 
     def start_threaded(self):
         self._start()
-        # FIXME
-        # eventlet.spawn(self.interpreter.mainEventLoop)
-        # eventlet.greenthread.sleep()
+        bpy.app.timers.register(self.interpreter.mainEventLoop)
 
     def isFinished(self):
         '''Returns True if the statemachine has reached it
