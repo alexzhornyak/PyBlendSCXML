@@ -22,7 +22,13 @@ import bpy
 
 import logging
 
-# FIXME: from .louie import dispatcher
+"""
+    author="Patrick K. O'Brien and contributors",
+    url="https://github.com/11craft/louie/",
+    download_url="https://pypi.python.org/pypi/Louie",
+    license="BSD"
+"""
+from .louie import dispatcher
 from .interpreter import CancelEvent
 
 

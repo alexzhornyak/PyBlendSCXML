@@ -38,7 +38,14 @@ from .node import (
 from .datastructures import OrderedSet
 from .eventprocessor import Event, ScxmlOriginType
 from timeit import default_timer as timer
-# FIXME: from .louie import dispatcher
+
+"""
+    author="Patrick K. O'Brien and contributors",
+    url="https://github.com/11craft/louie/",
+    download_url="https://pypi.python.org/pypi/Louie",
+    license="BSD"
+"""
+from .louie import dispatcher
 
 
 class Interpreter(object):
@@ -160,11 +167,11 @@ class Interpreter(object):
                         ],
                         s.donedata(), self.invokeId, self.dm.sessions[self.parentId].interpreter.externalQueue)
                 self.logger.info("Exiting interpreter")
-                # FIXME: dispatcher.send("signal_exit", self, final=s.id)
+                dispatcher.send("signal_exit", self, final=s.id)
                 self.exited = True
                 return
         self.exited = True
-        # FIXME: dispatcher.send("signal_exit", self, final=None)
+        dispatcher.send("signal_exit", self, final=None)
 
     def selectEventlessTransitions(self):
         enabledTransitions = OrderedSet()

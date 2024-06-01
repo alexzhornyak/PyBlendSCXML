@@ -20,7 +20,13 @@ This file is part of PySCXML.
 
 import bpy
 
-# FIXME: from .louie import dispatcher
+"""
+    author="Patrick K. O'Brien and contributors",
+    url="https://github.com/11craft/louie/",
+    download_url="https://pypi.python.org/pypi/Louie",
+    license="BSD"
+"""
+from .louie import dispatcher
 import logging
 import os
 import errno
@@ -69,7 +75,7 @@ class StateMachine(object):
 
         self.sessionid = sessionid or "pyscxml_session_" + str(id(self))
         self.interpreter = Interpreter()
-        # FIXME: dispatcher.connect(self.on_exit, "signal_exit", self.interpreter)
+        dispatcher.connect(self.on_exit, "signal_exit", self.interpreter)
         self.logger = logging.getLogger("pyscxml.%s" % self.sessionid)
         self.interpreter.logger = logging.getLogger("pyscxml.%s.interpreter" % self.sessionid)
         self.compiler.logger = logging.getLogger("pyscxml.%s.compiler" % self.sessionid)
@@ -153,8 +159,6 @@ class StateMachine(object):
         @param data: the data passed to the _event.data variable (any data type)
         '''
         self._send(name, data)
-        # FIXME
-        # eventlet.greenthread.sleep()
 
     def _send(self, name, data={}, invokeid=None, toQueue=None):
         self.interpreter.send(name, data, invokeid, toQueue)
@@ -170,11 +174,10 @@ class StateMachine(object):
         if sender is self.interpreter:
             self.is_finished = True
             for timer in self.compiler.timer_mapping.values():
-                # FIXME
-                # eventlet.greenthread.cancel(timer)
+                bpy.app.timers.unregister(timer)
                 del timer
-            # FIXME: dispatcher.disconnect(self, "signal_exit", self.interpreter)
-            # FIXME: dispatcher.send("signal_exit", self, final=final)
+            dispatcher.disconnect(self, "signal_exit", self.interpreter)
+            dispatcher.send("signal_exit", self, final=final)
 
     def __enter__(self):
         self.start_threaded()
@@ -227,8 +230,6 @@ class MultiSession(object):
         ''' launches the initialized sessions by calling start_threaded() on each sm'''
         for sm in self:
             sm.start_threaded()
-        # FIXME
-        # eventlet.greenthread.sleep()
 
     def make_session(self, sessionid, source):
         '''initalizes and starts a new StateMachine session at the provided sessionid.
@@ -254,7 +255,7 @@ class MultiSession(object):
         # if not isinstance(sm.datamodel, XPathDatamodel):
         sm.datamodel.sessions = self
         self.set_processors(sm)
-        # FIXME: dispatcher.connect(self.on_sm_exit, "signal_exit", sm)
+        dispatcher.connect(self.on_sm_exit, "signal_exit", sm)
         return sm
 
     def set_processors(self, sm):
@@ -294,8 +295,6 @@ class MultiSession(object):
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.cancel()
-        # FIXME
-        # eventlet.greenthread.sleep()
 
 
 class custom_executable(object):

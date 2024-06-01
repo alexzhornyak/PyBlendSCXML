@@ -35,7 +35,15 @@ import re
 # import sys
 from functools import partial
 from .messaging import get_path
-# FIXME: from .louie import dispatcher
+
+"""
+    author="Patrick K. O'Brien and contributors",
+    url="https://github.com/11craft/louie/",
+    download_url="https://pypi.python.org/pypi/Louie",
+    license="BSD"
+"""
+from .louie import dispatcher
+
 import urllib
 from .eventprocessor import Event, SCXMLEventProcessor as Processor, ScxmlMessage
 from .invoke import InvokeWrapper, InvokeSCXML
@@ -309,8 +317,7 @@ class Compiler(object):
                             def cancel():
                                 if not sm.isFinished():
                                     sm.cancel()
-                            # FIXME
-                            # eventlet.spawn_after(timeout, cancel)
+                            bpy.app.timers.register(cancel, first_interval=timeout)
                     except AssertionError:
                         raise ExecutableError(
                             node,
@@ -704,9 +711,9 @@ class Compiler(object):
                 return
             wrapper.set_invoke(inv)
 
-            # FIXME: dispatcher.connect(self.onInvokeSignal, "init.invoke." + inv.invokeid, inv)
-            # FIXME: dispatcher.connect(self.onInvokeSignal, "result.invoke." + inv.invokeid, inv)
-            # FIXME: dispatcher.connect(self.onInvokeSignal, "error.communication.invoke." + inv.invokeid, inv)
+            dispatcher.connect(self.onInvokeSignal, "init.invoke." + inv.invokeid, inv)
+            dispatcher.connect(self.onInvokeSignal, "result.invoke." + inv.invokeid, inv)
+            dispatcher.connect(self.onInvokeSignal, "error.communication.invoke." + inv.invokeid, inv)
             try:
                 if isinstance(inv, InvokeSCXML):
                     def onCreated(sender, sm):
