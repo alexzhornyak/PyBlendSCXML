@@ -34,14 +34,12 @@ from .node import (
 import re
 # import sys
 from functools import partial
-from .messaging import get_path
+from .messaging import get_document
 
-"""
-    author="Patrick K. O'Brien and contributors",
-    url="https://github.com/11craft/louie/",
-    download_url="https://pypi.python.org/pypi/Louie",
-    license="BSD"
-"""
+# author="Patrick K. O'Brien and contributors",
+# url="https://github.com/11craft/louie/",
+# download_url="https://pypi.python.org/pypi/Louie",
+# license="BSD"
 from .louie import dispatcher
 
 import urllib
@@ -75,6 +73,9 @@ from queue import Queue
 # from scxml.datastructures import Nodeset
 import xml.dom.minidom as minidom
 from .dotsi import Dict
+
+
+re_csstime_pattern = r"([0123456789.]+)\s*(s|ms)?"
 
 
 def prepend_ns(tag):
@@ -174,7 +175,7 @@ class Compiler(object):
         # NOTE: decorate the output.
         linenums = list(map(lambda x: str(x[0].sourceline), failedList))
         if len(linenums) > 2:
-            linenums[:-2] = map(lambda x: x + ",", linenums[:-2])
+            linenums[:-2] = list(map(lambda x: x + ",", linenums[:-2]))
         plur = ""
         if len(failedList) > 1:
             plur = "s"
@@ -232,7 +233,9 @@ class Compiler(object):
                 elif node_name == "cancel":
                     sendid = self.parseAttr(node, "sendid")
                     if sendid in self.timer_mapping:
-                        bpy.app.timers.unregister(self.timer_mapping[sendid])
+                        p_sender = self.timer_mapping[sendid]
+                        if bpy.app.timers.is_registered(p_sender):
+                            bpy.app.timers.unregister(p_sender)
                         del self.timer_mapping[sendid]
                 elif node_name == "assign":
                     try:
@@ -398,9 +401,10 @@ class Compiler(object):
         return self.dm.parseContent(contentNode)
 
     def parseCSSTime(self, timestr):
-        n, unit = re.search("(\\d+)(\\w+)", timestr).groups()
-        assert unit in ("s", "ms")
-        return float(n) if unit == "s" else float(n) / 1000
+        match = re.match(re_csstime_pattern, timestr)
+        if match:
+            n, unit = match.groups()
+            return float(n) / 1000 if unit == "ms" else float(n)
 
     def parseSend(self, sendNode, sendid):
 
@@ -638,7 +642,7 @@ class Compiler(object):
                 if node.get("target"):
                     t.target = node.get("target").split(" ")
                 if node.get("event"):
-                    t.event = map(lambda x: re.sub(r"(.*)\.\*$", r"\1", x).split("."), node.get("event").split(" "))
+                    t.event = list(map(lambda x: re.sub(r"(.*)\.\*$", r"\1", x).split("."), node.get("event").split(" ")))
                 if node.get("cond"):
                     def f(expr):
                         try:
@@ -719,9 +723,9 @@ class Compiler(object):
                     def onCreated(sender, sm):
                         sessionid = sm.sessionid
                         self.dm.sessions.make_session(sessionid, sm)
-                inv.start(self.dm.sessionid, onCreated)
+                    dispatcher.connect(onCreated, "created", inv, weak=False)
+                inv.start(self.dm.sessionid)
             except Exception as e:
-                # XXX del self.dm["_x"]["sessions"][sessionid]
                 xml_str = etree.tostring(node, encoding='unicode')
                 self.logger.exception("Line %s: Exception while parsing invoke xml." % (xml_str))
                 self.raiseError("error.execution.invoke." + type(e).__name__.lower(), e)
@@ -742,21 +746,17 @@ class Compiler(object):
     def parseInvoke(self, node, parentId, n):
         invokeid = node.get("id")
         if not invokeid:
-
-            # XXX           if not hasattr(node, "id_n"): node.id_n = 0
-            #            else: node.id_n += 1
             invokeid = "%s.%s.%s" % (parentId, n, self.invokeid_counter)
             self.invokeid_counter += 1
             if node.get("idlocation"):
                 self.dm[node.get("idlocation")] = invokeid
         invtype = self.parseAttr(node, "type", "scxml")
         src = self.parseAttr(node, "src")
-        if src and src.startswith("file:"):
-            newsrc, search_path = get_path(src.replace("file:", ""), self.dm.self.filedir or "")
-            if not newsrc:
-                # TODO: add search_path info to this exception.
-                raise IOError(2, "File not found when searching the PYTHONPATH: %s" % src)
-            src = "file:" + newsrc
+        src_doc = None
+    
+        if src:
+            src_doc = get_document(src, self.dm.self.filedir)
+
         data = self.parseData(node, getContent=False)
 
         scxmlType = ["http://www.w3.org/TR/scxml", "scxml"]
@@ -776,23 +776,26 @@ class Compiler(object):
                         xml_str = etree.tostring(node, encoding='unicode')
                         raise InvokeError("Line %s: The invoke content is invalid for content: \n%s" %
                                           (xml_str, etree.tostring(cnt[0])))
-                    inv.content = etree.tostring(cnt[0])
+                    inv.content = etree.tostring(cnt[0]).decode()
                 elif self.datamodel == "ecmascript" and isinstance(cnt, minidom.Element):  # if cnt is a minidom object
                     inv.content = cnt.toxml()
                 else:
                     raise Exception("Error when parsing contentNode, content is %s" % cnt)
         else:
             raise NotImplementedError("The invoke type '%s' is not supported by the platform." % invtype)
+        
         inv.invokeid = invokeid
         inv.parentSessionid = self.dm.sessionid
-        inv.src = src
         inv.type = invtype
         inv.default_datamodel = self.default_datamodel
+        if src_doc:
+            inv.content = src_doc.content
+            inv.filedir = src_doc.filedir
+            inv.filename = src_doc.filename
 
         finalizeNode = node.find(prepend_ns("finalize"))
         if finalizeNode is not None and not len(finalizeNode):
             paramList = node.findall(prepend_ns("param"))
-            # XXX namelist = filter(bool, map(lambda x: (x, x), node.get("namelist", "").split(" ")))
             namelist = [(x, x) for x in node.get('namelist', "").split(" ") if x]
             paramMapping = [(param.get("name"), param.get("location")) for param in (p for p in paramList if p.get("location"))]
 
@@ -900,13 +903,10 @@ class Compiler(object):
     def parallelize_download(self, nodelist):
         def download(node):
             src = node.get("src")
-            if src.startswith("file:"):
-                src, search_path = get_path(node.get("src").replace("file:", ""))
-                if not src:
-                    return (node, urllib.error.URLError("File not found: %s" % node.get("src")))
-                src = "file:" + src
+
             try:
-                return (node, urllib.request.urlopen(src).read())
+                p_doc = get_document(src, self.filedir)
+                return (node, p_doc.content)
 
             except Exception as e:
                 return (node, e)

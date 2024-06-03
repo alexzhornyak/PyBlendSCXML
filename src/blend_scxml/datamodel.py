@@ -144,7 +144,7 @@ class PythonDataModel(Dict, ImperativeDataModel):
             elif len(contentNode) > 0:
                 output = contentNode.findall("*")
             else:
-                xml_str = etree.tostring(contentNode, encoding='unicode')
+                xml_str = etree.tostring(contentNode, encoding='utf-8')
                 self.logger.error("Line %s: error when parsing content node." % xml_str)
                 return
         return output

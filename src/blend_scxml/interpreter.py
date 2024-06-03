@@ -24,6 +24,8 @@ This file is part of pyscxml.
 '''
 
 import queue
+from timeit import default_timer as timer
+
 from .node import (
     Final,
     History,
@@ -37,14 +39,11 @@ from .node import (
 
 from .datastructures import OrderedSet
 from .eventprocessor import Event, ScxmlOriginType
-from timeit import default_timer as timer
 
-"""
-    author="Patrick K. O'Brien and contributors",
-    url="https://github.com/11craft/louie/",
-    download_url="https://pypi.python.org/pypi/Louie",
-    license="BSD"
-"""
+# author="Patrick K. O'Brien and contributors",
+# url="https://github.com/11craft/louie/",
+# download_url="https://pypi.python.org/pypi/Louie",
+# license="BSD"
 from .louie import dispatcher
 
 
@@ -88,7 +87,7 @@ class Interpreter(object):
 
     def mainEventLoop(self):
         if self.running:
-            # print(">>> loop", timer())
+            # print(">>> loop", timer(), self.dm._name)
 
             if not self.externalQueueGuard:
                 self.enabledTransitions = None
@@ -131,7 +130,7 @@ class Interpreter(object):
                 self.running = False
                 return self.sleep_timeout
 
-            self.logger.info("external event found: %s", externalEvent.name)
+            self.logger.info(f"{self.dm._name} external event found: {externalEvent.name}")
 
             self.dm["__event"] = externalEvent
 
@@ -201,7 +200,7 @@ class Interpreter(object):
                 if done:
                     break
                 for t in s.transition:
-                    print(f"{event.name=}")
+                    print(f"{event.name=}", t.event)
                     if t.event and nameMatch(t.event, event.name.split(".")) and self.conditionMatch(t):
                         enabledTransitions.add(t)
                         done = True
@@ -450,7 +449,6 @@ def getChildStates(state):
 
 def nameMatch(eventList, event):
     t_events = list(eventList)
-    print(t_events)
     if ["*"] in t_events:
         return True
 
@@ -463,7 +461,6 @@ def nameMatch(eventList, event):
         return True
 
     for elem in t_events:
-        print(elem)
         if prefixList(elem, event):
             return True
     return False

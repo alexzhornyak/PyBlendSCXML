@@ -20,12 +20,10 @@ This file is part of PySCXML.
 
 import bpy
 
-"""
-    author="Patrick K. O'Brien and contributors",
-    url="https://github.com/11craft/louie/",
-    download_url="https://pypi.python.org/pypi/Louie",
-    license="BSD"
-"""
+# author="Patrick K. O'Brien and contributors",
+# url="https://github.com/11craft/louie/",
+# download_url="https://pypi.python.org/pypi/Louie",
+# license="BSD"
 from .louie import dispatcher
 import logging
 import os
@@ -33,7 +31,7 @@ import errno
 import re
 
 # from eventprocessor import Event
-from .messaging import get_path
+from .messaging import get_document
 from xml.etree import ElementTree as etree
 from . import compiler
 from .interpreter import Interpreter, CancelEvent
@@ -41,7 +39,6 @@ from .interpreter import Interpreter, CancelEvent
 
 def default_logfunction(label, msg):
     label = label or ""
-#    msg = msg or ""
 
     def f(x):
         if etree.iselement(x):
@@ -52,7 +49,7 @@ def default_logfunction(label, msg):
         return x
 
     if isinstance(msg, list):
-        msg = map(f, msg)
+        msg = list(map(f, msg))
         try:
             msg = "\n".join(msg)
         except Exception:
@@ -65,10 +62,14 @@ class StateMachine(object):
     This class provides the entry point for the PySCXML library.
     '''
 
-    def __init__(self, source, log_function=default_logfunction, sessionid=None, default_datamodel="python", setup_session=True):
+    def __init__(
+            self, source,
+            log_function=default_logfunction,
+            sessionid=None, default_datamodel="python", setup_session=True,
+            filedir="", filename=""):
         self.is_finished = False
-        self.filedir = None
-        self.filename = None
+        self.filedir = filedir
+        self.filename = filename
         self.compiler = compiler.Compiler()
         self.compiler.default_datamodel = default_datamodel
         self.compiler.log_function = log_function
@@ -79,7 +80,8 @@ class StateMachine(object):
         self.logger = logging.getLogger("pyscxml.%s" % self.sessionid)
         self.interpreter.logger = logging.getLogger("pyscxml.%s.interpreter" % self.sessionid)
         self.compiler.logger = logging.getLogger("pyscxml.%s.compiler" % self.sessionid)
-        self.doc = self.compiler.parseXML(self._open_document(source), self.interpreter)
+        self.doc = self.compiler.parseXML(
+            self._open_document(source), self.interpreter)
         self.interpreter.dm = self.doc.datamodel
         self.datamodel = self.doc.datamodel
         self.doc.datamodel["_x"] = {"self": self}
@@ -92,26 +94,15 @@ class StateMachine(object):
             MultiSession().make_session(self.sessionid, self)
 
     def _open_document(self, uri):
-        if hasattr(uri, "read"):
-            return uri.read()
-
-        if isinstance(uri, bytes):
-            uri = uri.decode(encoding="utf-8")
-
         if isinstance(uri, str) and re.search("<(.+:)?scxml", uri):  # NOTE: "<scxml" in uri:
             self.filename = "<string source>"
             self.filedir = None
             return uri
         else:
-            path, search_path = get_path(uri, self.filedir or "")
-            if path:
-                self.filedir, self.filename = os.path.split(os.path.abspath(path))
-                return open(path).read()
-            else:
-                msg = "No such file on the PYSCXMLPATH"
-                self.logger.error(msg + ": '%s'" % uri)
-                self.logger.error("PYTHONPATH: '%s'" % search_path)
-                raise IOError(errno.ENOENT, msg, uri)
+            p_doc = get_document(uri, self.filedir)
+            self.filedir = p_doc.filedir
+            self.filename = p_doc.filename
+            return p_doc.content
 
     def _start(self):
         self.compiler.instantiate_datamodel()
@@ -174,7 +165,8 @@ class StateMachine(object):
         if sender is self.interpreter:
             self.is_finished = True
             for timer in self.compiler.timer_mapping.values():
-                bpy.app.timers.unregister(timer)
+                if bpy.app.timers.is_registered(timer):
+                    bpy.app.timers.unregister(timer)
                 del timer
             dispatcher.disconnect(self, "signal_exit", self.interpreter)
             dispatcher.send("signal_exit", self, final=final)

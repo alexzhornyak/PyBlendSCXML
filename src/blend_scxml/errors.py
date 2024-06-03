@@ -37,7 +37,7 @@ class ExecutableError(CompositeError):
     def __str__(self):
         name = type(self.exception).__name__
         article = "An" if name[0].lower() in "aieou" else "A"
-        xml_str = etree.tostring(self.elem, encoding='unicode')
+        xml_str = etree.tostring(self.elem, encoding='utf-8')
         return "%s '%s' occurred when evaluating '%s' on line %s:\n    %s  " \
             % (article, name, split_ns(self.elem)[1], xml_str, self.exception)
 
@@ -84,7 +84,7 @@ class AttributeEvalError(CompositeError):
         name = type(self.exception).__name__
         article = "An" if name[0].lower() in "aieou" else "A"
 
-        xml_str = etree.tostring(self.elem, encoding='unicode')
+        xml_str = etree.tostring(self.elem, encoding='utf-8')
         return "%s %s occurred when evaluating %s's %s attribute on line %s:\n    %s  " \
             % (article, name, split_ns(self.elem)[1], self.attr, xml_str, self.exception)
 
@@ -119,7 +119,7 @@ class ExecutableContainerError(ExecutableError):
         child_name = "an element"
         if hasattr(self.exception, "elem"):
             child_name = split_ns(self.exception.elem)[1]
-        xml_str = etree.tostring(self.elem, encoding='unicode')
+        xml_str = etree.tostring(self.elem, encoding='utf-8')
         return "Stopped executing children of %s on line %s after %s raised an error:\n    %s" % \
             (split_ns(self.elem)[1], xml_str, child_name, self.exception)
 

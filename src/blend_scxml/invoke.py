@@ -21,13 +21,15 @@ This file is part of pyscxml.
 import bpy
 
 import logging
+import os
+import re
+import errno
+from urllib.parse import unquote, urlparse
 
-"""
-    author="Patrick K. O'Brien and contributors",
-    url="https://github.com/11craft/louie/",
-    download_url="https://pypi.python.org/pypi/Louie",
-    license="BSD"
-"""
+# author="Patrick K. O'Brien and contributors",
+# url="https://github.com/11craft/louie/",
+# download_url="https://pypi.python.org/pypi/Louie",
+# license="BSD"
 from .louie import dispatcher
 from .interpreter import CancelEvent
 
@@ -82,15 +84,12 @@ class InvokeSCXML(BaseInvoke):
         self.initData = data
         self.cancelled = False
         self.default_datamodel = "python"
-        self.onCreated = None
+        self.filedir = ""
+        self.filename = ""
 
-    def start(self, parentId, onCreated):
+    def start(self, parentId):
         self.parentId = parentId
-        self.onCreated = onCreated
-        if self.src:
-            self.getter.get_async(self.src, None)
-        else:
-            self._start(self.content)
+        self._start(self.content)
 
     def _start(self, doc):
         if self.cancelled:
@@ -101,14 +100,13 @@ class InvokeSCXML(BaseInvoke):
             doc,
             sessionid=self.parentSessionid + "." + self.invokeid,
             default_datamodel=self.default_datamodel,
-            # log_function=lambda label, val: dispatcher.send(signal="invoke_log", sender=self, label=label, msg=val),
-            log_function=lambda label, val: print(f"{label=} {val=}"),
-            setup_session=False)
+            log_function=lambda label, val: dispatcher.send(signal="invoke_log", sender=self, label=label, msg=val),
+            setup_session=False, filedir=self.filedir, filename=self.filename)
         self.interpreter = self.sm.interpreter
         self.sm.compiler.initData = self.initData
         self.sm.compiler.parentId = self.parentId
         self.sm.interpreter.parentId = self.parentId
-        self.onCreated(self, self.sm)
+        dispatcher.send("created", sender=self, sm=self.sm)
 
         self.sm._start_invoke(self.invokeid)
         bpy.app.timers.register(self.sm.interpreter.mainEventLoop)
@@ -122,6 +120,4 @@ class InvokeSCXML(BaseInvoke):
         if not self.sm:
             return
         self.sm.interpreter.cancelled = True
-        # XXX self.sm.interpreter.running = False
-        # XXX self.sm._send(["cancel", "invoke", self.invokeid], {}, self.invokeid)
         self.sm.interpreter.externalQueue.put(CancelEvent())
