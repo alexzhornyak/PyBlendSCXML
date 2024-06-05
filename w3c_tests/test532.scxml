@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- test that that if _scxmleventname  is not present, the name of the HTTP method is used
 as the name of the resulting event. -->
-<scxml xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance" initial="s0" datamodel="ecmascript" version="1.0">
+<scxml xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance" initial="s0" datamodel="python" version="1.0">
   <state id="s0">
     <onentry>
       <send event="timeout" delay="3s"/>

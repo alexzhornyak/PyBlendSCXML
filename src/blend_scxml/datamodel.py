@@ -10,9 +10,8 @@ from xml.etree import ElementTree as etree
 # from copy import deepcopy
 from .errors import (
     ExecutableError, IllegalLocationError,
-    # AttributeEvalError,
     ExprEvalError, DataModelError,
-    # AtomicError
+    ContentError,
 )
 # import logging
 import xml.dom.minidom as minidom
@@ -130,7 +129,9 @@ class PythonDataModel(Dict, ImperativeDataModel):
             msg = "The location expression '%s' was not instantiated in the datamodel." % assignNode.get("location")
             raise ExecutableError(IllegalLocationError(msg), assignNode)
 
-        self[assignNode.get("location")] = self.parseContent(assignNode)
+        # NOTE: we should be able to assign by dot notation and nested lists
+        s_location = assignNode.get("location")
+        exec(f"self.{s_location} = self.parseContent(assignNode)")
 
     def parseContent(self, contentNode):
         output = None
@@ -144,7 +145,7 @@ class PythonDataModel(Dict, ImperativeDataModel):
             elif len(contentNode) > 0:
                 output = contentNode.findall("*")
             else:
-                xml_str = etree.tostring(contentNode, encoding='utf-8')
+                xml_str = etree.tostring(contentNode, encoding='unicode')
                 self.logger.error("Line %s: error when parsing content node." % xml_str)
                 return
         return output

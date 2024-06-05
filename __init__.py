@@ -21,12 +21,15 @@
 """ Init Scxml """
 import bpy
 from bpy_extras.io_utils import ImportHelper
+import traceback
 
 import logging
 import os
 from pathlib import Path
+from timeit import default_timer as timer
+import socket
 
-from .src.blend_scxml.py_blend_scxml import StateMachine
+from .src.blend_scxml.py_blend_scxml import StateMachine, default_logfunction
 from .src.blend_scxml.louie import dispatcher
 
 bl_info = {
@@ -45,6 +48,48 @@ sm = None
 logging.basicConfig(level=logging.NOTSET)
 
 
+class UdpStateMachine(StateMachine):
+    def __init__(
+            self, source,
+            log_function=default_logfunction,
+            sessionid=None, default_datamodel="python", setup_session=True,
+            filedir="", filename=""):
+
+        super().__init__(
+            source, log_function=log_function, sessionid=sessionid, default_datamodel=default_datamodel,
+            setup_session=setup_session, filedir=filedir, filename=filename)
+        dispatcher.connect(self.send_enter, "signal_enter_state", self.interpreter)
+        dispatcher.connect(self.send_exit, "signal_exit_state", self.interpreter)
+
+    def send_udp(self, message: str):
+        UDP_IP = "127.0.0.1"
+        UDP_PORT = 11005
+
+        sock = socket.socket(
+            socket.AF_INET,  # Internet
+            socket.SOCK_DGRAM)  # UDP
+        sock.sendto(message.encode(), (UDP_IP, UDP_PORT))
+
+    def get_scxml_name(self, sender):
+        s_name = sender.dm.get("_name", "")
+        if not s_name:
+            try:
+                s_name = Path(sender.dm.self.filename).stem()
+            except Exception:
+                pass
+        return s_name
+
+    def send_enter(self, sender, state):
+        s_machine = self.get_scxml_name(sender)
+        print("enter:", s_machine, state)
+        self.send_udp(f"2@{s_machine}@{state}")
+
+    def send_exit(self, sender, state):
+        s_machine = self.get_scxml_name(sender)
+        print("exit:", s_machine, state)
+        self.send_udp(f"4@{s_machine}@{state}")
+
+
 class WM_OT_ScxmlStart(bpy.types.Operator, ImportHelper):
     bl_idname = "wm.scxml_start"
     bl_label = "Start Machine"
@@ -59,7 +104,7 @@ class WM_OT_ScxmlStart(bpy.types.Operator, ImportHelper):
 
     def execute(self, context):
         global sm
-        sm = StateMachine(self.filepath)
+        sm = UdpStateMachine(self.filepath)
         sm.start()
         return {'FINISHED'}
 
@@ -69,9 +114,8 @@ class WM_OT_ScxmlStop(bpy.types.Operator):
     bl_label = "Stop Machine"
 
     def execute(self, context):
-        if context.mode:
-            if sm:
-                sm.cancel()
+        if sm:
+            sm.cancel()
         return {'FINISHED'}
 
 
@@ -99,11 +143,14 @@ class VIEW3D_PT_Scxml(bpy.types.Panel):
         layout.operator_context = 'INVOKE_DEFAULT'
         layout.operator(WM_OT_ScxmlStop.bl_idname)
 
-        row = layout.row(align=True)
-        row.active = not wm.scxml.w3c_tests_running
-        row.operator(WM_OT_ScxmlTestW3C.bl_idname)
+        layout.separator()
 
-        wm = context.window_manager
+        p_scxml: ScxmlSceneSettings = wm.scxml
+
+        row = layout.row(align=True)
+        row.operator(WM_OT_ScxmlTestW3C.bl_idname, depress=p_scxml.w3c_tests_running)
+        layout.prop(p_scxml, "w3c_stop_on_error")
+
         layout.template_list(
             "SCXML_UL_W3C",
             "name",
@@ -116,53 +163,89 @@ class WM_OT_ScxmlTestW3C(bpy.types.Operator):
     bl_label = "Test W3C"
 
     _timer = None
-    _test_files = []
+    _start_time = 0
     _machine = None
 
     def on_sm_exit(self, sender, final):
-        wm = bpy.context.window_manager
-        print(len(wm.scxml.w3c_tests))
-        idx = wm.scxml.w3c_tests.find(sender.dm.self.filename)
-        if idx != -1:
-            p_item = wm.scxml.w3c_tests[idx]
-            if final == 'pass':
-                p_item.state = "PASS"
-            elif final == "fail":
-                p_item.state = "FAIL"
-            else:
-                p_item.state = "TIMEOUT"
+        try:
+            wm = bpy.context.window_manager
+            p_scxml = wm.scxml
+            idx = p_scxml.w3c_tests.find(sender.dm.self.filename)
+            if idx != -1:
+                p_item = p_scxml.w3c_tests[idx]
+                if final == 'pass':
+                    p_item.state = "PASS"
+                elif final == "fail":
+                    p_item.state = "FAIL"
+                else:
+                    p_item.state = "TIMEOUT"
 
-        print("EXIT:", sender, final)
-        self._machine = None
+            print("EXIT:", sender, final)
+            p_scxml.w3c_tests_index += 1
+            self._machine = None
+        except Exception as e:
+            print(e)
 
     def modal(self, context, event):
 
-        if event.type in {'RIGHTMOUSE', 'ESC'}:
+        wm = context.window_manager
+        p_scxml: ScxmlSceneSettings = wm.scxml
+
+        if event.type in {'RIGHTMOUSE', 'ESC'} or not p_scxml.w3c_tests_running:
             self.cancel(context)
             return {'CANCELLED'}
 
         if event.type == 'TIMER':
             if self._machine is None:
-                wm = context.window_manager
-                p_scxml: ScxmlSceneSettings = wm.scxml
-                p_scxml.w3c_tests_index += 1
                 if p_scxml.w3c_tests_index in range(len(p_scxml.w3c_tests)):
                     p_test = wm.scxml.w3c_tests[p_scxml.w3c_tests_index]
-                    self._machine = StateMachine(p_test.filepath)
-                    dispatcher.connect(self.on_sm_exit, "signal_exit", self._machine.interpreter)
-                    self._machine.start()
+                    was_idx = p_scxml.w3c_tests_index
+                    try:
+                        self._machine = StateMachine(p_test.filepath)
+                        self._start_time = timer()
+                        dispatcher.connect(self.on_sm_exit, "signal_exit", self._machine.interpreter)
+                        self._machine.start()
+                    except Exception as e:
+                        p_test.state = 'ERROR'
+                        p_test.msg = str(e)
+                        self.report({'ERROR'}, str(e))
+                        traceback.print_exc()
+                        if p_scxml.w3c_stop_on_error:
+                            self.cancel(context)
+                            return {'CANCELLED'}
+                        else:
+                            if self._machine:
+                                self._machine.cancel()
+
+                            if p_scxml.w3c_tests_index != was_idx + 1:
+                                p_scxml.w3c_tests_index = was_idx + 1
+
                     context.area.tag_redraw()
+                else:
+                    self.cancel(context)
+                    return {'FINISHED'}
+            else:
+                if timer() - self._start_time > 10.0:
+                    if p_scxml.w3c_tests_index in range(len(p_scxml.w3c_tests)):
+                        p_test = p_scxml.w3c_tests[p_scxml.w3c_tests_index]
+                        p_test.state = 'TIMEOUT'
+
+                    wm.scxml.w3c_tests_running = False
 
         return {'PASS_THROUGH'}
 
     def execute(self, context):
         wm = context.window_manager
+        if wm.scxml.w3c_tests_running:
+            wm.scxml.w3c_tests_running = False
+            return {'FINISHED'}
+
         self._timer = wm.event_timer_add(0.1, window=context.window)
         wm.modal_handler_add(self)
 
-        for test in wm.scxml.w3c_tests:
-            test.state = "NONE"
-        wm.scxml.w3c_tests_index = -1
+        for idx in range(wm.scxml.w3c_tests_index, len(wm.scxml.w3c_tests), 1):
+            p_test = wm.scxml.w3c_tests[idx]
+            p_test.clear()
         wm.scxml.w3c_tests_running = True
 
         return {'RUNNING_MODAL'}
@@ -170,7 +253,8 @@ class WM_OT_ScxmlTestW3C(bpy.types.Operator):
     def cancel(self, context):
         wm = context.window_manager
         wm.event_timer_remove(self._timer)
-        self._machine = None
+        if self._machine:
+            self._machine.cancel()
         wm.scxml.w3c_tests_running = False
         if hasattr(context, "area") and context.area:
             context.area.tag_redraw()
@@ -181,9 +265,11 @@ class ScxmlTest(bpy.types.PropertyGroup):
         name="State",
         items=[
             ("NONE", "None", ""),
-            ("PASS", "Pass", ""),
-            ("FAIL", "Fail", ""),
-            ("TIMEOUT", "Timeout", "")
+            ("PASS", "Pass", "Test was successfully passed"),
+            ("FAIL", "Fail", "Test was finished but did not reach 'Pass' state"),
+            ("MANUAL", "Manual", "Test should be reviewed manually"),
+            ("TIMEOUT", "Timeout", "Test was terminated by timeout"),
+            ("ERROR", "Error", "Test has Python execution error")
         ],
         default="NONE"
     )
@@ -194,6 +280,15 @@ class ScxmlTest(bpy.types.PropertyGroup):
         default=""
     )
 
+    msg: bpy.props.StringProperty(
+        name="Message",
+        default=""
+    )
+
+    def clear(self):
+        self.state = "NONE"
+        self.msg = ""
+
 
 class ScxmlSceneSettings(bpy.types.PropertyGroup):
     w3c_tests: bpy.props.CollectionProperty(type=ScxmlTest)
@@ -202,12 +297,22 @@ class ScxmlSceneSettings(bpy.types.PropertyGroup):
         name="W3C Tests Running",
         default=False
     )
+    w3c_stop_on_error: bpy.props.BoolProperty(
+        name="Stop On Error",
+        default=True
+    )
 
 
 class SCXML_UL_W3C(bpy.types.UIList):
-    def draw_item(self, context, layout: bpy.types.UILayout, data, item, icon, active_data, active_propname):
-        layout.prop(item, "state", emboss=False, text="")
-        layout.prop(item, "name", emboss=False, text="")
+    def draw_item(self, context, layout: bpy.types.UILayout, data, item: ScxmlTest, icon, active_data, active_propname):
+        row = layout.row()
+        row.alert = item.state in {'ERROR', 'FAIL', 'TIMEOUT'}
+        row.active = item.state != "MANUAL"
+        r_state = row.row(align=True)
+        r_state.label(text=layout.enum_item_name(item, "state", item.state))
+        row.prop(item, "name", emboss=False, text="")
+
+        row.label(text=item.msg)
 
 
 classes = (

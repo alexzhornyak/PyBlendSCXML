@@ -123,6 +123,8 @@ class Compiler(object):
         self.initData = Dict()
         self.script_src = {}
         self.datamodel = None
+        self.filedir = ""
+        self.filename = ""
         #        self.sourceline_mapping = {}
 
         self.log_function = None
@@ -142,8 +144,6 @@ class Compiler(object):
         self.dm.response = Queue()
         self.dm.websocket = Queue()
         self.dm["__event"] = None
-        #        self.dm["_x"]["sessions"] = {}
-
         self.dm["In"] = self.interpreter.In
 
     def parseAttr(self, elem, attr, default=None, is_list=False):
@@ -169,18 +169,17 @@ class Compiler(object):
 
         self.script_src = self.parallelize_download(scripts)
 
-        failedList = list(filter(lambda x: isinstance(x[1], Exception), self.script_src.items()))
+        failedList = list(filter(lambda x: isinstance(x[1], Exception), self.script_src.values()))
         if not failedList:
             return
         # NOTE: decorate the output.
-        linenums = list(map(lambda x: str(x[0].sourceline), failedList))
-        if len(linenums) > 2:
-            linenums[:-2] = list(map(lambda x: x + ",", linenums[:-2]))
-        plur = ""
-        if len(failedList) > 1:
-            plur = "s"
-            linenums[-1:] = ["and", linenums[-1]]
-        raise ScriptFetchError("Fetching remote script file%s failed on line%s %s." % (plur, plur, " ".join(linenums)))
+
+        t_msg = [f"{idx + 1}) Src: {item[2]} - Reason:{item[1]}" for idx, item in enumerate(failedList)]
+
+        s_line_msg = "; ".join(t_msg)
+
+        raise ScriptFetchError(
+            f"Fetching remote script files failed. {s_line_msg}")
 
     def try_execute_content(self, parent):
         try:
@@ -650,7 +649,7 @@ class Compiler(object):
                         except Exception as e:
                             self.raiseError("error.execution", e)
                             xml_str = etree.tostring(node, encoding='unicode')
-                            self.logger.error("Evaluation of cond failed on line %s: %s" % (xml_str, expr))
+                            self.logger.error("Evaluation of cond failed on line %s: %s :%s" % (xml_str, expr, str(e)))
 
                     t.cond = partial(f, node.get("cond"))
                 t.type = node.get("type", "external")
@@ -753,9 +752,9 @@ class Compiler(object):
         invtype = self.parseAttr(node, "type", "scxml")
         src = self.parseAttr(node, "src")
         src_doc = None
-    
+
         if src:
-            src_doc = get_document(src, self.dm.self.filedir)
+            src_doc = get_document(src, self.filedir)
 
         data = self.parseData(node, getContent=False)
 
@@ -783,7 +782,7 @@ class Compiler(object):
                     raise Exception("Error when parsing contentNode, content is %s" % cnt)
         else:
             raise NotImplementedError("The invoke type '%s' is not supported by the platform." % invtype)
-        
+
         inv.invokeid = invokeid
         inv.parentSessionid = self.dm.sessionid
         inv.type = invtype
@@ -863,10 +862,11 @@ class Compiler(object):
             value = None
 
             if node.get("src"):
+                s_content = dl_mapping[node][1]
                 try:
-                    node.append(etree.fromstring(dl_mapping[node]))
+                    node.append(etree.fromstring(s_content))
                 except Exception:
-                    node.text = dl_mapping[node]
+                    node.text = s_content
 
                 if isinstance(value, Exception):
                     self.logger.error("Data src not found : '%s'. \n\t%s" % (node.get("src"), value))
@@ -906,10 +906,10 @@ class Compiler(object):
 
             try:
                 p_doc = get_document(src, self.filedir)
-                return (node, p_doc.content)
+                return (node, p_doc.content, src)
 
             except Exception as e:
-                return (node, e)
+                return (node, e, src)
 
         output = {}
         for node in nodelist:

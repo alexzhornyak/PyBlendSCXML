@@ -68,9 +68,9 @@ class StateMachine(object):
             sessionid=None, default_datamodel="python", setup_session=True,
             filedir="", filename=""):
         self.is_finished = False
-        self.filedir = filedir
-        self.filename = filename
         self.compiler = compiler.Compiler()
+        self.compiler.filedir = filedir
+        self.compiler.filename = filename
         self.compiler.default_datamodel = default_datamodel
         self.compiler.log_function = log_function
 
@@ -93,15 +93,23 @@ class StateMachine(object):
         if setup_session:
             MultiSession().make_session(self.sessionid, self)
 
+    @property
+    def filedir(self):
+        return self.compiler.filedir
+
+    @property
+    def filename(self):
+        return self.compiler.filename
+
     def _open_document(self, uri):
         if isinstance(uri, str) and re.search("<(.+:)?scxml", uri):  # NOTE: "<scxml" in uri:
-            self.filename = "<string source>"
-            self.filedir = None
+            self.compiler.filename = "<string source>"
+            self.compiler.filedir = ""
             return uri
         else:
-            p_doc = get_document(uri, self.filedir)
-            self.filedir = p_doc.filedir
-            self.filename = p_doc.filename
+            p_doc = get_document(uri, self.compiler.filedir)
+            self.compiler.filedir = p_doc.filedir
+            self.compiler.filename = p_doc.filename
             return p_doc.content
 
     def _start(self):
@@ -118,7 +126,9 @@ class StateMachine(object):
         if not self.interpreter.running:
             raise RuntimeError("The StateMachine instance may only be started once.")
         else:
-            doc = os.path.join(self.filedir, self.filename) if self.filedir else ""
+            doc = (
+                os.path.join(self.compiler.filedir, self.compiler.filename)
+                if self.compiler.filedir else self.compiler.filename)
             self.logger.info("Starting %s" % doc)
         self._start()
         bpy.app.timers.register(self.interpreter.mainEventLoop)

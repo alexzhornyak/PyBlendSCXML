@@ -100,7 +100,6 @@ class InvokeSCXML(BaseInvoke):
             doc,
             sessionid=self.parentSessionid + "." + self.invokeid,
             default_datamodel=self.default_datamodel,
-            log_function=lambda label, val: dispatcher.send(signal="invoke_log", sender=self, label=label, msg=val),
             setup_session=False, filedir=self.filedir, filename=self.filename)
         self.interpreter = self.sm.interpreter
         self.sm.compiler.initData = self.initData

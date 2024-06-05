@@ -158,6 +158,7 @@ class Interpreter(object):
             for inv in s.invoke:
                 self.cancelInvoke(inv)
             self.configuration.delete(s)
+            dispatcher.send("signal_exit_state", self, state=s.id)
             if isFinalState(s) and isScxmlState(s.parent):
                 if self.invokeId and self.parentId and self.parentId in self.dm.sessions:
                     self.send(
@@ -200,7 +201,6 @@ class Interpreter(object):
                 if done:
                     break
                 for t in s.transition:
-                    print(f"{event.name=}", t.event)
                     if t.event and nameMatch(t.event, event.name.split(".")) and self.conditionMatch(t):
                         enabledTransitions.add(t)
                         done = True
@@ -289,6 +289,7 @@ class Interpreter(object):
             for inv in s.invoke:
                 self.cancelInvoke(inv)
             self.configuration.delete(s)
+            dispatcher.send("signal_exit_state", self, state=s.id)
 
     def cancelInvoke(self, inv):
         inv.cancel()
@@ -324,6 +325,8 @@ class Interpreter(object):
             if self.doc.binding == "late" and s.isFirstEntry:
                 s.initDatamodel()
                 s.isFirstEntry = False
+
+            dispatcher.send("signal_enter_state", self, state=s.id)
 
             for content in s.onentry:
                 self.executeContent(content)
