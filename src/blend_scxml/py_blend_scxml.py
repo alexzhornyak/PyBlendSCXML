@@ -27,7 +27,6 @@ import bpy
 from .louie import dispatcher
 import logging
 import os
-import errno
 import re
 
 # from eventprocessor import Event
@@ -43,7 +42,7 @@ def default_logfunction(label, msg):
     def f(x):
         if etree.iselement(x):
             return etree.tostring(x).strip()
-        elif isinstance(x, etree._ElementStringResult):
+        elif not isinstance(x, str):
             return str(x)
 
         return x

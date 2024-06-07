@@ -117,6 +117,7 @@ class History(object):
 class Transition(Executable):
     def __init__(self, source):
         Executable.__init__(self)
+
         self.source = source
         self.target = []
         self.event = []

@@ -101,11 +101,14 @@ class PythonDataModel(Dict, ImperativeDataModel):
     def __init__(self, *args, **kwargs):
         Dict.__init__(self, *args, **kwargs)
 
-    def __setitem__(self, key, val):
+    def _checkLegalAssignment(self, key):
         if (key in assignOnce and key in self) or key in hidden or not self.isLegalName(key):
             raise DataModelError("You can't assign to the name '%s'." % key)
-        else:
-            Dict.__setitem__(self, key, val)
+
+    def __setitem__(self, key, val):
+        self._checkLegalAssignment(key)
+
+        Dict.__setitem__(self, key, val)
 
     def __getitem__(self, key):
         # NOTE: raises keyerror
@@ -131,6 +134,10 @@ class PythonDataModel(Dict, ImperativeDataModel):
 
         # NOTE: we should be able to assign by dot notation and nested lists
         s_location = assignNode.get("location")
+
+        # NOTE: test 322
+        self._checkLegalAssignment(s_location)
+
         exec(f"self.{s_location} = self.parseContent(assignNode)")
 
     def parseContent(self, contentNode):
@@ -143,11 +150,15 @@ class PythonDataModel(Dict, ImperativeDataModel):
             elif len(contentNode) == 0:
                 output = self.normalizeContent(contentNode)
             elif len(contentNode) > 0:
-                output = contentNode.findall("*")
+                for elem in contentNode:
+                    if isinstance(elem, etree.Element):
+                        if output is None:
+                            output = elem
+                        else:
+                            raise ExecutableError(ContentError("Content support only 1 xml node."), elem)
             else:
                 xml_str = etree.tostring(contentNode, encoding='unicode')
                 self.logger.error("Line %s: error when parsing content node." % xml_str)
-                return
         return output
 
     @exceptionFormatter

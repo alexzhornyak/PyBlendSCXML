@@ -20,7 +20,6 @@
 
 """ Init Scxml """
 import bpy
-from bpy_extras.io_utils import ImportHelper
 import traceback
 
 import logging
@@ -60,6 +59,7 @@ class UdpStateMachine(StateMachine):
             setup_session=setup_session, filedir=filedir, filename=filename)
         dispatcher.connect(self.send_enter, "signal_enter_state", self.interpreter)
         dispatcher.connect(self.send_exit, "signal_exit_state", self.interpreter)
+        dispatcher.connect(self.send_taking_transition, "signal_taking_transition", self.interpreter)
 
     def send_udp(self, message: str):
         UDP_IP = "127.0.0.1"
@@ -89,22 +89,21 @@ class UdpStateMachine(StateMachine):
         print("exit:", s_machine, state)
         self.send_udp(f"4@{s_machine}@{state}")
 
+    def send_taking_transition(self, sender, state, transition_index):
+        s_machine = self.get_scxml_name(sender)
+        print("transition:", s_machine, transition_index)
+        self.send_udp(f"12@{s_machine}@{state}|{transition_index}")
 
-class WM_OT_ScxmlStart(bpy.types.Operator, ImportHelper):
+
+class WM_OT_ScxmlStart(bpy.types.Operator):
     bl_idname = "wm.scxml_start"
     bl_label = "Start Machine"
 
-    filename_ext = ".scxml"
-    filter_glob: bpy.props.StringProperty(default="*.scxml", options={'HIDDEN'})
-
-    show_dialog: bpy.props.BoolProperty(
-        name="Show Dialog",
-        default=True
-    )
-
     def execute(self, context):
+        wm = context.window_manager
+        p_scxml: ScxmlSettings = wm.scxml
         global sm
-        sm = UdpStateMachine(self.filepath)
+        sm = UdpStateMachine(p_scxml.state_machine_filepath)
         sm.start()
         return {'FINISHED'}
 
@@ -131,27 +130,29 @@ class VIEW3D_PT_Scxml(bpy.types.Panel):
         layout = self.layout
 
         wm = context.window_manager
-        op_props = wm.operator_properties_last(WM_OT_ScxmlStart.bl_idname)
-        b_show_dialog = True
-        if op_props:
-            b_show_dialog = op_props.show_dialog
-            layout.prop(op_props, "filepath")
-            layout.prop(op_props, "show_dialog")
+        p_scxml: ScxmlSettings = wm.scxml
 
-        layout.operator_context = 'INVOKE_DEFAULT' if b_show_dialog else 'EXEC_DEFAULT'
+        layout.prop(p_scxml, "state_machine_filepath")
         layout.operator(WM_OT_ScxmlStart.bl_idname)
-        layout.operator_context = 'INVOKE_DEFAULT'
         layout.operator(WM_OT_ScxmlStop.bl_idname)
 
         layout.separator()
 
-        p_scxml: ScxmlSceneSettings = wm.scxml
+        p_scxml: ScxmlSettings = wm.scxml
 
-        row = layout.row(align=True)
+        box = layout.box()
+        row = box.row(align=True)
+        row.alignment = 'CENTER'
+        row.label(text='W3C SCXML Tests')
+
+        col = box.column(align=True)
+        col.use_property_split = True
+        col.prop(p_scxml, "w3c_stop_on_error")
+
+        row = box.row(align=True)
         row.operator(WM_OT_ScxmlTestW3C.bl_idname, depress=p_scxml.w3c_tests_running)
-        layout.prop(p_scxml, "w3c_stop_on_error")
 
-        layout.template_list(
+        box.template_list(
             "SCXML_UL_W3C",
             "name",
             wm.scxml, "w3c_tests",
@@ -172,16 +173,23 @@ class WM_OT_ScxmlTestW3C(bpy.types.Operator):
             p_scxml = wm.scxml
             idx = p_scxml.w3c_tests.find(sender.dm.self.filename)
             if idx != -1:
-                p_item = p_scxml.w3c_tests[idx]
+                p_test = p_scxml.w3c_tests[idx]
                 if final == 'pass':
-                    p_item.state = "PASS"
+                    p_test.state = "PASS"
                 elif final == "fail":
-                    p_item.state = "FAIL"
+                    p_test.state = "FAIL"
+                elif final == "final":
+                    p_test.state = "MANUAL"
                 else:
-                    p_item.state = "TIMEOUT"
+                    p_test.state = "TIMEOUT"
+
+                if p_test.state in p_scxml.w3c_stop_on_error:
+                    wm.scxml.w3c_tests_running = False
+                    return
 
             print("EXIT:", sender, final)
-            p_scxml.w3c_tests_index += 1
+            if p_scxml.w3c_tests_index < len(p_scxml.w3c_tests) - 2:
+                p_scxml.w3c_tests_index += 1
             self._machine = None
         except Exception as e:
             print(e)
@@ -189,7 +197,7 @@ class WM_OT_ScxmlTestW3C(bpy.types.Operator):
     def modal(self, context, event):
 
         wm = context.window_manager
-        p_scxml: ScxmlSceneSettings = wm.scxml
+        p_scxml: ScxmlSettings = wm.scxml
 
         if event.type in {'RIGHTMOUSE', 'ESC'} or not p_scxml.w3c_tests_running:
             self.cancel(context)
@@ -210,7 +218,7 @@ class WM_OT_ScxmlTestW3C(bpy.types.Operator):
                         p_test.msg = str(e)
                         self.report({'ERROR'}, str(e))
                         traceback.print_exc()
-                        if p_scxml.w3c_stop_on_error:
+                        if p_test.state in p_scxml.w3c_stop_on_error:
                             self.cancel(context)
                             return {'CANCELLED'}
                         else:
@@ -230,7 +238,8 @@ class WM_OT_ScxmlTestW3C(bpy.types.Operator):
                         p_test = p_scxml.w3c_tests[p_scxml.w3c_tests_index]
                         p_test.state = 'TIMEOUT'
 
-                    wm.scxml.w3c_tests_running = False
+                    if p_test.state in p_scxml.w3c_stop_on_error:
+                        wm.scxml.w3c_tests_running = False
 
         return {'PASS_THROUGH'}
 
@@ -290,16 +299,30 @@ class ScxmlTest(bpy.types.PropertyGroup):
         self.msg = ""
 
 
-class ScxmlSceneSettings(bpy.types.PropertyGroup):
+class ScxmlSettings(bpy.types.PropertyGroup):
     w3c_tests: bpy.props.CollectionProperty(type=ScxmlTest)
     w3c_tests_index: bpy.props.IntProperty(min=-1, default=-1)
     w3c_tests_running: bpy.props.BoolProperty(
         name="W3C Tests Running",
         default=False
     )
-    w3c_stop_on_error: bpy.props.BoolProperty(
+    w3c_stop_on_error: bpy.props.EnumProperty(
         name="Stop On Error",
-        default=True
+        items=[
+            ("FAIL", "Fail", "Test was finished but did not reach 'Pass' state"),
+            ("MANUAL", "Manual", "Test should be reviewed manually"),
+            ("TIMEOUT", "Timeout", "Test was terminated by timeout"),
+            ("ERROR", "Error", "Test has Python execution error")
+        ],
+        options={'ENUM_FLAG'},
+        default={'FAIL', 'ERROR', 'TIMEOUT'}
+    )
+
+    state_machine_filepath: bpy.props.StringProperty(
+        name="FilePath",
+        description="State machine filepath",
+        subtype='FILE_PATH',
+        default=""
     )
 
 
@@ -317,7 +340,7 @@ class SCXML_UL_W3C(bpy.types.UIList):
 
 classes = (
     ScxmlTest,
-    ScxmlSceneSettings,
+    ScxmlSettings,
     SCXML_UL_W3C,
 
     WM_OT_ScxmlStart,
@@ -332,7 +355,7 @@ def register():
     for cls in classes:
         bpy.utils.register_class(cls)
 
-    bpy.types.WindowManager.scxml = bpy.props.PointerProperty(type=ScxmlSceneSettings)
+    bpy.types.WindowManager.scxml = bpy.props.PointerProperty(type=ScxmlSettings)
 
     base_dir = os.path.dirname(__file__)
     wm = bpy.context.window_manager
@@ -341,9 +364,9 @@ def register():
         file = str(entry)
         if "sub" not in file:
             wm.scxml.w3c_tests.add()
-            p_item: ScxmlTest = wm.scxml.w3c_tests[-1]
-            p_item.name = Path(file).name
-            p_item.filepath = file
+            p_test: ScxmlTest = wm.scxml.w3c_tests[-1]
+            p_test.name = Path(file).name
+            p_test.filepath = file
 
 
 def unregister():

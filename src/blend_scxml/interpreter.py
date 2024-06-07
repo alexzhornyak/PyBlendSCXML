@@ -24,7 +24,7 @@ This file is part of pyscxml.
 '''
 
 import queue
-from timeit import default_timer as timer
+# from timeit import default_timer as timer
 
 from .node import (
     Final,
@@ -187,8 +187,10 @@ class Interpreter(object):
                         enabledTransitions.add(t)
                         done = True
                         break
-        filteredTransitions = self.filterPreempted(enabledTransitions)
-        return filteredTransitions
+        # NOTE: enabled alghorithm passes 'test405', but second fails
+        filteredTransitions1 = self.filterPreempted(enabledTransitions)
+        # filteredTransitions2 = self.removeConflictingTransitions(enabledTransitions)
+        return filteredTransitions1
 
     def selectTransitions(self, event):
         enabledTransitions = OrderedSet()
@@ -206,7 +208,62 @@ class Interpreter(object):
                         done = True
                         break
 
-        filteredTransitions = self.filterPreempted(enabledTransitions)
+        # NOTE: enabled alghorithm passes 'test403c', but second fails
+        # filteredTransitions1 = self.filterPreempted(enabledTransitions)
+        filteredTransitions2 = self.removeConflictingTransitions(enabledTransitions)
+        return filteredTransitions2
+
+    def getEffectiveTargetStates(self, transition):
+        targets = OrderedSet()
+        for s in transition.target:
+            if isHistoryState(s):
+                if s.id in self.historyValue:
+                    for elem in self.historyValue[s.id]:
+                        targets.add(elem)
+                else:
+                    for elem in self.getEffectiveTargetStates(s.transition):
+                        targets.add(elem)
+            else:
+                targets.add(s)
+        return targets
+
+    def getTransitionDomain(self, t):
+        tstates = self.getEffectiveTargetStates(t)
+        if not tstates:
+            return None
+        elif t.type == "internal" and isCompoundState(t.source) and all(isDescendant(s, t.source) for s in tstates):
+            return t.source
+        else:
+            return self.findLCCA([t.source] + tstates)
+
+    def computeExitSet(self, transitions):
+        statesToExit = OrderedSet()
+        for t in transitions:
+            if t.target:
+                domain = self.getTransitionDomain(t)
+                for s in self.configuration:
+                    if isDescendant(s, domain):
+                        statesToExit.add(s)
+        return statesToExit
+
+    def removeConflictingTransitions(self, enabledTransitions):
+        filteredTransitions = OrderedSet()
+        # //toList sorts the transitions in the order of the states that selected them
+        for t1 in enabledTransitions:
+            t1Preempted = False
+            transitionsToRemove = OrderedSet()
+            for t2 in filteredTransitions:
+                if set(self.computeExitSet([t1])).intersection(self.computeExitSet([t2])):
+                    if isDescendant(t1.source, t2.source):
+                        transitionsToRemove.add(t2)
+                    else:
+                        t1Preempted = True
+                        break
+            if not t1Preempted:
+                for t3 in transitionsToRemove:
+                    filteredTransitions.delete(t3)
+                filteredTransitions.add(t1)
+
         return filteredTransitions
 
     def preemptsTransition(self, t, t2):
@@ -223,7 +280,7 @@ class Interpreter(object):
     def findLCPA(self, states):
         '''
         Gets the least common parallel ancestor of states.
-        Just like findLCA but only for parallel states.
+        Just like findLCCA but only for parallel states.
         '''
         for anc in filter(isParallelState, getProperAncestors(states[0], None)):
             if all(map(lambda s: isDescendant(s, anc), states[1:])):
@@ -263,7 +320,7 @@ class Interpreter(object):
                 if t.type == "internal" and isCompoundState(t.source) and all(map(lambda s: isDescendant(s, t.source), tstates)):
                     ancestor = t.source
                 else:
-                    ancestor = self.findLCA([t.source] + tstates)
+                    ancestor = self.findLCCA([t.source] + tstates)
 
                 for s in self.configuration:
                     if isDescendant(s, ancestor):
@@ -278,11 +335,11 @@ class Interpreter(object):
             for h in s.history:
                 if h.type == "deep":
                     def f(s0):
-                        isAtomicState(s0) and isDescendant(s0, s)
+                        return isAtomicState(s0) and isDescendant(s0, s)
                 else:
                     def f(s0):
-                        s0.parent == s
-                self.historyValue[h.id] = filter(f, self.configuration)  # + s.parent
+                        return s0.parent == s
+                self.historyValue[h.id] = list(filter(f, self.configuration))
         for s in statesToExit:
             for content in s.onexit:
                 self.executeContent(content)
@@ -296,6 +353,12 @@ class Interpreter(object):
 
     def executeTransitionContent(self, enabledTransitions):
         for t in enabledTransitions:
+            try:
+                transition_index = t.source.transition.index(t)
+                dispatcher.send("signal_taking_transition", self, state=t.source.id, transition_index=transition_index)
+            except Exception:
+                # NOTE: just fast skip by exception if scxml is not identified, etc.
+                pass
             self.executeContent(t)
 
     def enterStates(self, enabledTransitions):
@@ -307,7 +370,7 @@ class Interpreter(object):
                 if t.type == "internal" and isCompoundState(t.source) and all(map(lambda s: isDescendant(s, t.source), tstates)):
                     ancestor = t.source
                 else:
-                    ancestor = self.findLCA([t.source] + tstates)
+                    ancestor = self.findLCCA([t.source] + tstates)
                 for s in tstates:
                     self.addStatesToEnter(s, statesToEnter, statesForDefaultEntry)
                 for s in tstates:
@@ -372,7 +435,7 @@ class Interpreter(object):
         else:
             return False
 
-    def findLCA(self, stateList):
+    def findLCCA(self, stateList):
         for anc in filter(isCompoundState, getProperAncestors(stateList[0], None)):
             if all(map(lambda s: isDescendant(s, anc), stateList[1:])):
                 return anc

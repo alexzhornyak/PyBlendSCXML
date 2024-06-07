@@ -68,10 +68,7 @@ from .errors import (
     IllegalLocationError
 )
 from queue import Queue
-# from . import pyscxml
-# import eventlet
 # from scxml.datastructures import Nodeset
-import xml.dom.minidom as minidom
 from .dotsi import Dict
 
 
@@ -291,9 +288,8 @@ class Compiler(object):
                     contentNode = node.find(prepend_ns("content"))
                     if contentNode is not None:
                         xml = self.parseContent(contentNode)
-                        if type(xml) is list:
-                            # TODO: if len(cnt) > 0, we could throw exception.
-                            xml = etree.tostring(xml[0])
+                        if isinstance(xml, etree.Element):
+                            xml = etree.tostring(xml)
                         else:
                             raise Exception(F"Error when parsing contentNode, content is {xml}")
                     elif node.get("expr"):
@@ -638,6 +634,7 @@ class Compiler(object):
 
             elif node_tag == "transition":
                 t = Transition(parentState)
+
                 if node.get("target"):
                     t.target = node.get("target").split(" ")
                 if node.get("event"):
@@ -766,18 +763,12 @@ class Compiler(object):
                 cnt = self.parseContent(contentNode)
                 if isinstance(cnt, str):
                     inv.content = cnt
-                elif isinstance(cnt, list):
-                    # TODO: if len(cnt) > 0, we could throw exception.
-                    if len(cnt) == 0:
-                        xml_str = etree.tostring(node, encoding='unicode')
-                        raise InvokeError("Line %s: The invoke content is empty." % xml_str)
-                    if cnt[0].tag != prepend_ns("scxml"):
+                elif isinstance(cnt, etree.Element):
+                    if cnt.tag != prepend_ns("scxml"):
                         xml_str = etree.tostring(node, encoding='unicode')
                         raise InvokeError("Line %s: The invoke content is invalid for content: \n%s" %
-                                          (xml_str, etree.tostring(cnt[0])))
-                    inv.content = etree.tostring(cnt[0]).decode()
-                elif self.datamodel == "ecmascript" and isinstance(cnt, minidom.Element):  # if cnt is a minidom object
-                    inv.content = cnt.toxml()
+                                          (xml_str, etree.tostring(cnt)))
+                    inv.content = etree.tostring(cnt).decode()
                 else:
                     raise Exception("Error when parsing contentNode, content is %s" % cnt)
         else:
