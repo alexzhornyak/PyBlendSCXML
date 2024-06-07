@@ -607,10 +607,12 @@ class Compiler(object):
                         try:
                             data = self.parseData(node, forSend=True)
 
-                            if self.datamodel == "xpath" and not all(map(lambda x: type(x) is tuple, data)):
-                                return data
                             try:
-                                return Dict(data)
+                                # NOTE: 'test561'
+                                if isinstance(data, etree.Element):
+                                    return data
+                                else:
+                                    return Dict(data)
                             except (TypeError, ValueError):
                                 # NOTE: not key/value data, probably from <content>
                                 return data
@@ -818,7 +820,7 @@ class Compiler(object):
         else:  # NOTE: has neither initial tag or attribute, so we'll make the first valid state a target instead.
             childNodes = filter(lambda x: x.tag in map(prepend_ns, ["state", "parallel", "final"]), list(node))
             firstChild = next(childNodes, None)
-            if firstChild:
+            if firstChild is not None:
                 return Initial([firstChild.get("id")])
             return None  # NOTE: leaf nodes have no initial
 

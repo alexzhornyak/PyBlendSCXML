@@ -3,7 +3,7 @@
 the executable content inside the <initial> transition.  However the Processor MUST
 execute this content only if there is no stored history.  Once the history state's
 parent state has been visited and exited, the default history content must not be executed -->
-<scxml xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance" version="1.0" initial="s0" datamodel="ecmascript">
+<scxml xmlns="http://www.w3.org/2005/07/scxml" xmlns:conf="http://www.w3.org/2005/scxml-conformance" version="1.0" initial="s0" datamodel="python">
   <state id="s0">
     <datamodel>
       <data id="Var1" expr="0"/>

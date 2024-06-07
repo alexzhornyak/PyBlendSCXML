@@ -71,7 +71,16 @@ class ImperativeDataModel(object):
     def getInnerXML(self, node):
         return etree.tostring(node).split(">", 1)[1].rsplit("<", 1)[0]
 
-    def normalizeContent(self, contentNode):
+    def normalizeContent(self, contentNode: etree.Element):
+        # NOTE: WARNING! We will use variant 2 to perform checks
+        # see: https://alexzhornyak.github.io/SCXML-tutorial/Doc/datamodel.html#warning-be-careful-of-assigning-complex-objects-or-functions-via-in-line-content-of-data
+        try:
+            s_expr = contentNode.text.strip()
+            if s_expr:
+                return self.evalExpr(s_expr)
+        except Exception:
+            pass
+
         domNode = minidom.parseString(etree.tostring(contentNode)).documentElement
 
         def f(node):
@@ -79,17 +88,6 @@ class ImperativeDataModel(object):
                 return node.nodeValue
             else:
                 return node.toxml()
-
-        t_content = list(map(f, domNode.childNodes))
-
-        # NOTE: WARNING! We will use variant 2 to perform checks
-        # see: https://alexzhornyak.github.io/SCXML-tutorial/Doc/datamodel.html#warning-be-careful-of-assigning-complex-objects-or-functions-via-in-line-content-of-data
-        try:
-            s_expr = ("\n".join(t_content)).strip()
-            if s_expr:
-                return self.evalExpr(s_expr)
-        except Exception:
-            pass
 
         contentStr = " ".join(map(f, domNode.childNodes))
 

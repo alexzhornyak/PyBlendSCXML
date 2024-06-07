@@ -190,6 +190,8 @@ class WM_OT_ScxmlTestW3C(bpy.types.Operator):
             print("EXIT:", sender, final)
             if p_scxml.w3c_tests_index < len(p_scxml.w3c_tests) - 2:
                 p_scxml.w3c_tests_index += 1
+            else:
+                wm.scxml.w3c_tests_running = False
             self._machine = None
         except Exception as e:
             print(e)

@@ -21,10 +21,6 @@ This file is part of pyscxml.
 import bpy
 
 import logging
-import os
-import re
-import errno
-from urllib.parse import unquote, urlparse
 
 # author="Patrick K. O'Brien and contributors",
 # url="https://github.com/11craft/louie/",
