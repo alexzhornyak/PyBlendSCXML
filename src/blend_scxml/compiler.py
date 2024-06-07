@@ -429,7 +429,11 @@ class Compiler(object):
         try:
             raw = self.parseData(sendNode, forSend=True)
             try:
-                data = Dict(raw)
+                # NOTE: 'test561'
+                if isinstance(raw, etree.Element):
+                    data = raw
+                else:
+                    data = Dict(raw)
             except Exception:
                 # data is not key/value pair
                 data = raw
