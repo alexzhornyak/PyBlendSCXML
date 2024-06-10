@@ -407,7 +407,7 @@ class Compiler(object):
             if not self.dm.hasLocation(sendNode.get("idlocation")):
                 msg = "The location expression '%s' was not instantiated in the datamodel." % sendNode.get("location")
                 raise ExecutableError(IllegalLocationError(msg), sendNode)
-            # XXX self.dm[sendNode.get("idlocation")] = sendid
+
             self.dm.assign(
                 etree.Element(
                     "assign",

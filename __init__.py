@@ -362,12 +362,32 @@ def register():
     base_dir = os.path.dirname(__file__)
     wm = bpy.context.window_manager
     wm.scxml.w3c_tests.clear()
+
+    # NOTE: Basic HTTP tests are not supported!
+    basichttp_tests = (
+        "test201.scxml",
+        "test509.scxml",
+        "test510.scxml",
+        "test518.scxml",
+        "test519.scxml",
+        "test520.scxml",
+        "test522.scxml",
+        "test531.scxml",
+        "test532.scxml",
+        "test534.scxml",
+        "test567.scxml",
+        "test577.scxml"
+    )
+
     for entry in sorted(Path(os.path.join(base_dir, "w3c_tests")).glob("*.scxml")):
         file = str(entry)
-        if "sub" not in file:
+
+        testname = Path(file).name
+
+        if "sub" not in file and testname not in basichttp_tests:
             wm.scxml.w3c_tests.add()
             p_test: ScxmlTest = wm.scxml.w3c_tests[-1]
-            p_test.name = Path(file).name
+            p_test.name = testname
             p_test.filepath = file
 
 
