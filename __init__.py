@@ -27,6 +27,8 @@ import os
 from pathlib import Path
 from timeit import default_timer as timer
 import socket
+import xml.etree.ElementTree as etree
+from collections import defaultdict
 
 from .src.blend_scxml.py_blend_scxml import StateMachine, default_logfunction
 from .src.blend_scxml.louie import dispatcher
@@ -43,7 +45,6 @@ bl_info = {
 }
 
 
-sm = None
 logging.basicConfig(level=logging.NOTSET)
 
 
@@ -60,6 +61,28 @@ class UdpStateMachine(StateMachine):
         dispatcher.connect(self.send_enter, "signal_enter_state", self.interpreter)
         dispatcher.connect(self.send_exit, "signal_exit_state", self.interpreter)
         dispatcher.connect(self.send_taking_transition, "signal_taking_transition", self.interpreter)
+
+        self.t_bindings = defaultdict(list)
+
+        p_bindings = Path(self.filename).stem
+        p_bindings += ".bindings.xml"
+        p_bindings = os.path.join(self.filedir, p_bindings)
+        if os.path.exists(p_bindings):
+            tree = etree.parse(p_bindings)
+            root = tree.getroot()
+            if root:
+                for idx, container in enumerate(root):
+                    s_container_name = container.get("NAME", f"Container {idx + 1}")
+                    p_container = self.t_bindings[s_container_name]
+                    for item in container:
+                        p_container.append(
+                            {
+                                "name": item.get("Name", ""),
+                                "scxml_name": item.get("ScxmlName", ""),
+                                "param": item.get("Param", ""),
+                                "state_machine": item.get("StateMachineName", "")
+                            }
+                        )
 
     def send_udp(self, message: str):
         UDP_IP = "127.0.0.1"
@@ -95,6 +118,9 @@ class UdpStateMachine(StateMachine):
         self.send_udp(f"12@{s_machine}@{state}|{transition_index}")
 
 
+sm: UdpStateMachine = None
+
+
 class WM_OT_ScxmlStart(bpy.types.Operator):
     bl_idname = "wm.scxml_start"
     bl_label = "Start Machine"
@@ -103,7 +129,9 @@ class WM_OT_ScxmlStart(bpy.types.Operator):
         wm = context.window_manager
         p_scxml: ScxmlSettings = wm.scxml
         global sm
-        sm = UdpStateMachine(p_scxml.state_machine_filepath)
+        sm = UdpStateMachine(
+            p_scxml.state_machine_filepath,
+            )
         sm.start()
         return {'FINISHED'}
 
@@ -116,6 +144,79 @@ class WM_OT_ScxmlStop(bpy.types.Operator):
         if sm:
             sm.cancel()
         return {'FINISHED'}
+
+
+class WM_OT_ScxmlTrigger(bpy.types.Operator):
+    bl_idname = "wm.scxml_trigger"
+    bl_label = "Trigger Machine"
+
+    event_name: bpy.props.StringProperty(
+        name="Event Name",
+        default=""
+    )
+
+    def execute(self, context):
+        if sm:
+            sm.send(self.event_name)
+        return {'FINISHED'}
+
+
+class ScxmlTriggerDataBase:
+    event_name: bpy.props.StringProperty(
+        name="Event Name",
+        default=""
+    )
+
+    event_data: None
+
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
+        wm = context.window_manager
+        return wm.invoke_props_dialog(self)
+
+    def execute(self, context):
+        if sm:
+            sm.send(self.event_name, self.event_data)
+        return {'FINISHED'}
+
+
+class WM_OT_ScxmlTriggerInt(ScxmlTriggerDataBase, bpy.types.Operator):
+    bl_idname = "wm.scxml_trigger_int"
+    bl_label = "Trigger Int"
+
+    event_data: bpy.props.IntProperty(
+        name="Event Data",
+        default=0
+    )
+
+
+class WM_OT_ScxmlTriggerFloat(ScxmlTriggerDataBase, bpy.types.Operator):
+    bl_idname = "wm.scxml_trigger_float"
+    bl_label = "Trigger Float"
+
+    event_data: bpy.props.FloatProperty(
+        name="Event Data",
+        default=0.0
+    )
+
+
+class WM_OT_ScxmlTriggerStr(ScxmlTriggerDataBase, bpy.types.Operator):
+    bl_idname = "wm.scxml_trigger_str"
+    bl_label = "Trigger String"
+
+    event_data: bpy.props.StringProperty(
+        name="Event Data",
+        default=""
+    )
+
+
+class WM_OT_ScxmlTriggerBool(ScxmlTriggerDataBase, bpy.types.Operator):
+    bl_idname = "wm.scxml_trigger_bool"
+    bl_label = "Trigger Bool"
+
+    event_data: bpy.props.StringProperty(
+        name="Event Data",
+        default=""
+    )
 
 
 class VIEW3D_PT_Scxml(bpy.types.Panel):
@@ -132,9 +233,30 @@ class VIEW3D_PT_Scxml(bpy.types.Panel):
         wm = context.window_manager
         p_scxml: ScxmlSettings = wm.scxml
 
-        layout.prop(p_scxml, "state_machine_filepath")
-        layout.operator(WM_OT_ScxmlStart.bl_idname)
-        layout.operator(WM_OT_ScxmlStop.bl_idname)
+        box = layout.box()
+        box.prop(p_scxml, "state_machine_filepath")
+        col = box.column(align=True)
+        col.operator(WM_OT_ScxmlStart.bl_idname)
+        col.operator(WM_OT_ScxmlStop.bl_idname)
+
+        if sm and sm.t_bindings:
+            for container, items in sm.t_bindings.items():
+                box.label(text=container)
+                col = box.column(align=True)
+                for item in items:
+                    row = col.row(align=True)
+                    s_ev_name = item.get("scxml_name", "")
+                    s_op_text = item.get("name", s_ev_name)
+                    s_param = item.get("param", "")
+                    op_id = WM_OT_ScxmlTrigger.bl_idname
+                    if s_param == "Integer":
+                        op_id = WM_OT_ScxmlTriggerInt.bl_idname
+                    elif s_param == "Analog":
+                        op_id = WM_OT_ScxmlTriggerFloat.bl_idname
+                    elif s_param == "Logic":
+                        op_id = WM_OT_ScxmlTriggerBool.bl_idname
+                    op = col.operator(op_id, text=s_op_text)
+                    op.event_name = s_ev_name
 
         layout.separator()
 
@@ -347,6 +469,13 @@ classes = (
 
     WM_OT_ScxmlStart,
     WM_OT_ScxmlStop,
+
+    WM_OT_ScxmlTrigger,
+    WM_OT_ScxmlTriggerInt,
+    WM_OT_ScxmlTriggerBool,
+    WM_OT_ScxmlTriggerFloat,
+    WM_OT_ScxmlTriggerStr,
+
     WM_OT_ScxmlTestW3C,
 
     VIEW3D_PT_Scxml

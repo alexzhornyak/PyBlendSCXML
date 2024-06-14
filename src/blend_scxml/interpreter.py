@@ -364,6 +364,7 @@ class Interpreter(object):
     def enterStates(self, enabledTransitions):
         statesToEnter = OrderedSet()
         statesForDefaultEntry = OrderedSet()
+        defaultHistoryContent = {}  # NOTE: 'test579'
         for t in enabledTransitions:
             if t.target:
                 tstates = self.getTargetStates(t.target)
@@ -372,14 +373,14 @@ class Interpreter(object):
                 else:
                     ancestor = self.findLCCA([t.source] + tstates)
                 for s in tstates:
-                    self.addStatesToEnter(s, statesToEnter, statesForDefaultEntry)
+                    self.addStatesToEnter(s, statesToEnter, statesForDefaultEntry, defaultHistoryContent)
                 for s in tstates:
                     for anc in getProperAncestors(s, ancestor):
                         statesToEnter.add(anc)
                         if isParallelState(anc):
                             for child in getChildStates(anc):
                                 if not any(map(lambda s: isDescendant(s, child), statesToEnter)):
-                                    self.addStatesToEnter(child, statesToEnter, statesForDefaultEntry)
+                                    self.addStatesToEnter(child, statesToEnter, statesForDefaultEntry, defaultHistoryContent)
 
         statesToEnter.sort(key=enterOrder)
         for s in statesToEnter:
@@ -395,6 +396,10 @@ class Interpreter(object):
                 self.executeContent(content)
             if s in statesForDefaultEntry:
                 self.executeContent(s.initial)
+            # NOTE: 'test579'
+            p_content = defaultHistoryContent.get(s.id, None)
+            if p_content is not None:
+                self.executeContent(p_content)
             if isFinalState(s):
                 parent = s.parent
                 grandparent = parent.parent
@@ -406,26 +411,27 @@ class Interpreter(object):
             if isFinalState(s) and isScxmlState(s.parent):
                 self.running = False
 
-    def addStatesToEnter(self, state, statesToEnter, statesForDefaultEntry):
+    def addStatesToEnter(self, state, statesToEnter, statesForDefaultEntry, defaultHistoryContent):
         if isHistoryState(state):
             if state.id in self.historyValue:
                 for s in self.historyValue[state.id]:
-                    self.addStatesToEnter(s, statesToEnter, statesForDefaultEntry)
+                    self.addStatesToEnter(s, statesToEnter, statesForDefaultEntry, defaultHistoryContent)
                     for anc in getProperAncestors(s, state):
                         statesToEnter.add(anc)
             else:
                 for t in state.transition:
                     for s in self.getTargetStates(t.target):
-                        self.addStatesToEnter(s, statesToEnter, statesForDefaultEntry)
+                        defaultHistoryContent[s.parent.id] = t
+                        self.addStatesToEnter(s, statesToEnter, statesForDefaultEntry, defaultHistoryContent)
         else:
             statesToEnter.add(state)
             if isCompoundState(state):
                 statesForDefaultEntry.add(state)
                 for s in self.getTargetStates(state.initial):
-                    self.addStatesToEnter(s, statesToEnter, statesForDefaultEntry)
+                    self.addStatesToEnter(s, statesToEnter, statesForDefaultEntry, defaultHistoryContent)
             elif isParallelState(state):
                 for s in getChildStates(state):
-                    self.addStatesToEnter(s, statesToEnter, statesForDefaultEntry)
+                    self.addStatesToEnter(s, statesToEnter, statesForDefaultEntry, defaultHistoryContent)
 
     def isInFinalState(self, s):
         if isCompoundState(s):

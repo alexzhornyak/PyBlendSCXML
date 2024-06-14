@@ -50,7 +50,6 @@ from xml.etree import ElementTree as etree
 import textwrap
 
 
-# import time
 from .datamodel import PythonDataModel
 from .errors import (
     ExprEvalError,
@@ -68,7 +67,6 @@ from .errors import (
     IllegalLocationError
 )
 from queue import Queue
-# from scxml.datastructures import Nodeset
 from .dotsi import Dict
 
 
@@ -545,7 +543,6 @@ class Compiler(object):
             xmlStr = "\n".join("%s %s" % (n, line) for n, line in enumerate(xmlStr.split("\n")))
             self.logger.error(xmlStr)
             raise
-        # ElementInclude.include(tree)
         self.strict_parse = tree.get("exmode", "lax") == "strict"
         self.doc.binding = tree.get("binding", "early")
         t_items = preprocess(tree)
@@ -572,10 +569,6 @@ class Compiler(object):
                 self.dm["_name"] = node.get("name", "")
                 for scriptChild in node.findall(prepend_ns("script")):
                     src = scriptChild.text or self.script_src.get(scriptChild, "") or ""
-                    # XXX except URLError, e:
-                    #     msg = ("A URL error in a top level script element at line %s "
-                    #     "prevented the document from executing. Error: %s") % (scriptChild.sourceline, e)
-                    #     raise ScriptFetchError(msg)
                     try:
                         self.execExpr(src)
                     except ExprEvalError:
