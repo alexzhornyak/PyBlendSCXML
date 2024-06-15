@@ -126,7 +126,7 @@ class Compiler(object):
         self.strict_parse = False
         self.timer_mapping = {}
         self.instantiate_datamodel = None
-        self.default_datamodel = None
+        self.default_datamodel = "python"
         self.invokeid_counter = 0
         self.sendid_counter = 0
         self.parentId = None
@@ -204,7 +204,8 @@ class Compiler(object):
             if node_ns == ns:
                 if node_name == "log":
                     try:
-                        self.log_function(node.get("label"), self.getExprValue(node.get("expr")))
+                        if self.log_function:
+                            self.log_function(node.get("label"), self.getExprValue(node.get("expr")))
                     except ExprEvalError as e:
                         raise AttributeEvalError(e, node, "expr")
                 elif node_name == "raise":
@@ -568,9 +569,17 @@ class Compiler(object):
                 self.doc.name = node.get("name", "")
                 self.dm["_name"] = node.get("name", "")
                 for scriptChild in node.findall(prepend_ns("script")):
-                    src = scriptChild.text or self.script_src.get(scriptChild, "") or ""
+                    script_text = scriptChild.text
+                    if script_text is None:
+                        p_script_data = self.script_src.get(scriptChild, None)
+                        if p_script_data:
+                            script_text = p_script_data[1]
+
+                    if script_text is None:
+                        script_text = ""
+
                     try:
-                        self.execExpr(src)
+                        self.execExpr(script_text)
                     except ExprEvalError:
                         # TODO: we should probably crash here.
                         self.logger.exception("An exception was raised in a top-level script element.")
@@ -756,7 +765,7 @@ class Compiler(object):
 
         scxmlType = ["http://www.w3.org/TR/scxml", "scxml"]
         if invtype.strip("/") in scxmlType:
-            inv = InvokeSCXML(Dict(data))
+            inv = InvokeSCXML(Dict(data), self)
             contentNode = node.find(prepend_ns("content"))
             if contentNode is not None:
                 cnt = self.parseContent(contentNode)

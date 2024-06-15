@@ -72,16 +72,19 @@ class BaseInvoke(object):
 
 
 class InvokeSCXML(BaseInvoke):
-    def __init__(self, data):
+    def __init__(self, data, compiler):
         BaseInvoke.__init__(self)
         self.sm = None
         self.parentQueue = None
         self.content = None
         self.initData = data
         self.cancelled = False
-        self.default_datamodel = "python"
+
         self.filedir = ""
         self.filename = ""
+
+        self.default_datamodel = compiler.default_datamodel
+        self.log_function = compiler.log_function
 
     def start(self, parentId):
         self.parentId = parentId
@@ -95,6 +98,7 @@ class InvokeSCXML(BaseInvoke):
         self.sm = StateMachine(
             doc,
             sessionid=self.parentSessionid + "." + self.invokeid,
+            log_function=lambda label, val: dispatcher.send(signal="invoke_log", sender=self, label=label, msg=val),
             default_datamodel=self.default_datamodel,
             setup_session=False, filedir=self.filedir, filename=self.filename)
         self.interpreter = self.sm.interpreter

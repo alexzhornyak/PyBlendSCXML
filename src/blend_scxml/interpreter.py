@@ -100,9 +100,9 @@ class Interpreter(object):
                         if self.internalQueue.empty():
                             stable = True
                         else:
-                            internalEvent = self.internalQueue.get()  # this call returns immediately if no event is available
+                            internalEvent: Event = self.internalQueue.get()  # this call returns immediately if no event is available
 
-                            self.logger.info("internal event found: %s", internalEvent.name)
+                            self.logger.info(f"{self.dm._name} internal event found: {internalEvent.name} {internalEvent.data}")
 
                             self.dm["__event"] = internalEvent
                             self.enabledTransitions = self.selectTransitions(internalEvent)
@@ -123,14 +123,14 @@ class Interpreter(object):
                 return self.sleep_timeout
             else:
                 self.externalQueueGuard = False
-                externalEvent = self.externalQueue.get()  # this call blocks until an event is available
+                externalEvent: Event = self.externalQueue.get()  # this call blocks until an event is available
 
             # our parent session also might cancel us.  The mechanism for this is platform specific,
             if isCancelEvent(externalEvent):
                 self.running = False
                 return self.sleep_timeout
 
-            self.logger.info(f"{self.dm._name} external event found: {externalEvent.name}")
+            self.logger.info(f"{self.dm._name} external event found: {externalEvent.name} {externalEvent.data}")
 
             self.dm["__event"] = externalEvent
 

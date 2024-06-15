@@ -252,8 +252,7 @@ class MultiSession(object):
         else:
             sm = source  # source is assumed to be a StateMachine instance
         self.sm_mapping[sessionid] = sm
-        # TODO: fix this.
-        # if not isinstance(sm.datamodel, XPathDatamodel):
+
         sm.datamodel.sessions = self
         self.set_processors(sm)
         dispatcher.connect(self.on_sm_exit, "signal_exit", sm)

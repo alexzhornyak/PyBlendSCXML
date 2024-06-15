@@ -36,7 +36,7 @@ def get_document(url, file_dir) -> ContentDocument:
     filepath = unquote(url_parsed.path)
 
     if url_parsed.scheme not in {'http', 'https'}:
-        if url_parsed.scheme != 'file':
+        if url_parsed.scheme and url_parsed.scheme != 'file':
             filepath = os.path.join(url_parsed.scheme + ":", filepath)
 
         if not os.path.exists(filepath) and file_dir:
