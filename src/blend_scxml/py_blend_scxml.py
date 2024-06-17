@@ -20,18 +20,18 @@ This file is part of PySCXML.
 
 import bpy
 
+import logging
+import os
+import re
+from xml.etree import ElementTree as etree
+
 # author="Patrick K. O'Brien and contributors",
 # url="https://github.com/11craft/louie/",
 # download_url="https://pypi.python.org/pypi/Louie",
 # license="BSD"
 from .louie import dispatcher
-import logging
-import os
-import re
 
-# from eventprocessor import Event
 from .messaging import get_document
-from xml.etree import ElementTree as etree
 from . import compiler
 from .interpreter import Interpreter, CancelEvent
 

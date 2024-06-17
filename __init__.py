@@ -26,11 +26,10 @@ import logging
 import os
 from pathlib import Path
 from timeit import default_timer as timer
-import socket
 import xml.etree.ElementTree as etree
 from collections import defaultdict
 
-from .src.blend_scxml.py_blend_scxml import StateMachine, default_logfunction
+from .src.blend_scxml.monitor_scxml import UdpMonitorMachine
 from .src.blend_scxml.louie import dispatcher
 
 bl_info = {
@@ -48,19 +47,12 @@ bl_info = {
 logging.basicConfig(level=logging.NOTSET)
 
 
-class UdpStateMachine(StateMachine):
+class UdpStateMachine(UdpMonitorMachine):
     def __init__(
-            self, source,
-            log_function=default_logfunction,
-            sessionid=None, default_datamodel="python", setup_session=True,
-            filedir="", filename=""):
+            self, source):
 
         super().__init__(
-            source, log_function=log_function, sessionid=sessionid, default_datamodel=default_datamodel,
-            setup_session=setup_session, filedir=filedir, filename=filename)
-        dispatcher.connect(self.send_enter, "signal_enter_state", self.interpreter)
-        dispatcher.connect(self.send_exit, "signal_exit_state", self.interpreter)
-        dispatcher.connect(self.send_taking_transition, "signal_taking_transition", self.interpreter)
+            source)
 
         self.t_bindings = defaultdict(list)
 
@@ -83,39 +75,6 @@ class UdpStateMachine(StateMachine):
                                 "state_machine": item.get("StateMachineName", "")
                             }
                         )
-
-    def send_udp(self, message: str):
-        UDP_IP = "127.0.0.1"
-        UDP_PORT = 11005
-
-        sock = socket.socket(
-            socket.AF_INET,  # Internet
-            socket.SOCK_DGRAM)  # UDP
-        sock.sendto(message.encode(), (UDP_IP, UDP_PORT))
-
-    def get_scxml_name(self, sender):
-        s_name = sender.dm.get("_name", "")
-        if not s_name:
-            try:
-                s_name = Path(sender.dm.self.filename).stem()
-            except Exception:
-                pass
-        return s_name
-
-    def send_enter(self, sender, state):
-        s_machine = self.get_scxml_name(sender)
-        print("enter:", s_machine, state)
-        self.send_udp(f"2@{s_machine}@{state}")
-
-    def send_exit(self, sender, state):
-        s_machine = self.get_scxml_name(sender)
-        print("exit:", s_machine, state)
-        self.send_udp(f"4@{s_machine}@{state}")
-
-    def send_taking_transition(self, sender, state, transition_index):
-        s_machine = self.get_scxml_name(sender)
-        print("transition:", s_machine, transition_index)
-        self.send_udp(f"12@{s_machine}@{state}|{transition_index}")
 
 
 sm: UdpStateMachine = None
@@ -333,7 +292,7 @@ class WM_OT_ScxmlTestW3C(bpy.types.Operator):
                     p_test = wm.scxml.w3c_tests[p_scxml.w3c_tests_index]
                     was_idx = p_scxml.w3c_tests_index
                     try:
-                        self._machine = StateMachine(p_test.filepath)
+                        self._machine = UdpMonitorMachine(p_test.filepath)
                         self._start_time = timer()
                         dispatcher.connect(self.on_sm_exit, "signal_exit", self._machine.interpreter)
                         self._machine.start()
