@@ -24,7 +24,6 @@ This file is part of pyscxml.
 '''
 
 import queue
-# from timeit import default_timer as timer
 
 from .node import (
     Final,
@@ -45,6 +44,7 @@ from .eventprocessor import Event, ScxmlOriginType
 # download_url="https://pypi.python.org/pypi/Louie",
 # license="BSD"
 from .louie import dispatcher
+from .dispatcher_consts import DispatcherConstants
 
 
 class Interpreter(object):
@@ -87,8 +87,6 @@ class Interpreter(object):
 
     def mainEventLoop(self):
         if self.running:
-            # print(">>> loop", timer(), self.dm._name)
-
             if not self.externalQueueGuard:
                 self.enabledTransitions = None
                 stable = False
@@ -102,7 +100,7 @@ class Interpreter(object):
                         else:
                             internalEvent: Event = self.internalQueue.get()  # this call returns immediately if no event is available
 
-                            self.logger.info(f"{self.dm._name} internal event found: {internalEvent.name} {internalEvent.data}")
+                            dispatcher.send(DispatcherConstants.internal_event, self, event=internalEvent)
 
                             self.dm["__event"] = internalEvent
                             self.enabledTransitions = self.selectTransitions(internalEvent)
@@ -130,7 +128,7 @@ class Interpreter(object):
                 self.running = False
                 return self.sleep_timeout
 
-            self.logger.info(f"{self.dm._name} external event found: {externalEvent.name} {externalEvent.data}")
+            dispatcher.send(DispatcherConstants.external_event, self, event=externalEvent)
 
             self.dm["__event"] = externalEvent
 
@@ -158,7 +156,7 @@ class Interpreter(object):
             for inv in s.invoke:
                 self.cancelInvoke(inv)
             self.configuration.delete(s)
-            dispatcher.send("signal_exit_state", self, state=s.id)
+            dispatcher.send(DispatcherConstants.exit_state, self, state=s.id)
             if isFinalState(s) and isScxmlState(s.parent):
                 if self.invokeId and self.parentId and self.parentId in self.dm.sessions:
                     self.send(
@@ -166,12 +164,11 @@ class Interpreter(object):
                             "done", "invoke", self.invokeId
                         ],
                         s.donedata(), self.invokeId, self.dm.sessions[self.parentId].interpreter.externalQueue)
-                self.logger.info("Exiting interpreter")
-                dispatcher.send("signal_exit", self, final=s.id)
+                dispatcher.send(DispatcherConstants.exit, self, final=s.id)
                 self.exited = True
                 return
         self.exited = True
-        dispatcher.send("signal_exit", self, final=None)
+        dispatcher.send(DispatcherConstants.exit, self, final=None)
 
     def selectEventlessTransitions(self):
         enabledTransitions = OrderedSet()
@@ -306,11 +303,14 @@ class Interpreter(object):
 
         return OrderedSet(filteredTransitions)
 
+    def getConfigurationIDs(self):
+        return [s.id for s in self.configuration if s.id != "__main__"]
+
     def microstep(self, enabledTransitions):
         self.exitStates(enabledTransitions)
         self.executeTransitionContent(enabledTransitions)
         self.enterStates(enabledTransitions)
-        self.logger.info("new config: {" + ", ".join([s.id for s in self.configuration if s.id != "__main__"]) + "}")
+        dispatcher.send(DispatcherConstants.new_configuration, self)
 
     def exitStates(self, enabledTransitions):
         statesToExit = OrderedSet()
@@ -346,7 +346,7 @@ class Interpreter(object):
             for inv in s.invoke:
                 self.cancelInvoke(inv)
             self.configuration.delete(s)
-            dispatcher.send("signal_exit_state", self, state=s.id)
+            dispatcher.send(DispatcherConstants.exit_state, self, state=s.id)
 
     def cancelInvoke(self, inv):
         inv.cancel()
@@ -355,7 +355,7 @@ class Interpreter(object):
         for t in enabledTransitions:
             try:
                 transition_index = t.source.transition.index(t)
-                dispatcher.send("signal_taking_transition", self, state=t.source.id, transition_index=transition_index)
+                dispatcher.send(DispatcherConstants.taking_transition, self, state=t.source.id, transition_index=transition_index)
             except Exception:
                 # NOTE: just fast skip by exception if scxml is not identified, etc.
                 pass
@@ -390,7 +390,7 @@ class Interpreter(object):
                 s.initDatamodel()
                 s.isFirstEntry = False
 
-            dispatcher.send("signal_enter_state", self, state=s.id)
+            dispatcher.send(DispatcherConstants.enter_state, self, state=s.id)
 
             for content in s.onentry:
                 self.executeContent(content)

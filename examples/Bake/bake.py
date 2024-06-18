@@ -8,6 +8,12 @@ class ScxmlData:
     t_BAKED_OBJECTS = []
     s_BAKE_OBJECT = ""
 
+    def on_depsgraph_update(self, scene: bpy.types.Scene, depsgraph: bpy.types.Depsgraph):
+        logging.info(f"{str(scene)}, {str(depsgraph)}")
+        for update in depsgraph.updates:
+            if isinstance(update.id, bpy.types.Scene):
+                _x["self"].send("scene.update")  # type: ignore
+
 
 g_DATA = ScxmlData()
 
@@ -246,8 +252,13 @@ def register():
         bpy.utils.register_class(cls)
     bpy.types.WindowManager.scxml_bake = bpy.props.PointerProperty(type=ScxmlBakeProps)
 
+    bpy.app.handlers.depsgraph_update_post.append(g_DATA.on_depsgraph_update)
+
 
 def unregister():
+
+    bpy.app.handlers.depsgraph_update_post.remove(g_DATA.on_depsgraph_update)
+
     del bpy.types.WindowManager.scxml_bake
     for cls in reversed(scxml_classes):
         bpy.utils.unregister_class(cls)

@@ -185,7 +185,6 @@ class UdpTestingMachine(UdpMonitorMachine):
             self._stop_event.set()
 
             if self.listen_thread.is_alive:
-                self.udp_socket.shutdown(socket.SHUT_RDWR)
                 sock = socket.socket(
                     socket.AF_INET,  # Internet
                     socket.SOCK_DGRAM)  # UDP

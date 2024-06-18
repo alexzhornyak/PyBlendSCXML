@@ -30,6 +30,7 @@ from xml.etree import ElementTree as etree
 # download_url="https://pypi.python.org/pypi/Louie",
 # license="BSD"
 from .louie import dispatcher
+from .dispatcher_consts import DispatcherConstants
 
 from .messaging import get_document
 from . import compiler
@@ -177,8 +178,8 @@ class StateMachine(object):
                 if bpy.app.timers.is_registered(timer):
                     bpy.app.timers.unregister(timer)
                 del timer
-            dispatcher.disconnect(self, "signal_exit", self.interpreter)
-            dispatcher.send("signal_exit", self, final=final)
+            dispatcher.disconnect(self, DispatcherConstants.exit, self.interpreter)
+            dispatcher.send(DispatcherConstants.exit, self, final=final)
 
     def __enter__(self):
         self.start_threaded()
