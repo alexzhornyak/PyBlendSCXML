@@ -8,12 +8,6 @@ class ScxmlData:
     t_BAKED_OBJECTS = []
     s_BAKE_OBJECT = ""
 
-    def on_depsgraph_update(self, scene: bpy.types.Scene, depsgraph: bpy.types.Depsgraph):
-        logging.info(f"{str(scene)}, {str(depsgraph)}")
-        for update in depsgraph.updates:
-            if isinstance(update.id, bpy.types.Scene):
-                _x["self"].send("scene.update")  # type: ignore
-
 
 g_DATA = ScxmlData()
 
@@ -102,6 +96,7 @@ def bake_completed():
 
     p_obj_item: ScxmlBakeItem = p_scxml_props.objects[idx]
     p_obj_item.bake_state = 'COMPLETED'
+    p_obj_item.bake_time = FormatTimeStr((timer() - p_obj_item.bake_time_start) * 1000)
     update_view()
 
 
@@ -149,6 +144,18 @@ def exit_baking():
         p_obj: bpy.types.Object = ctx.view_layer.objects.get(item.name)
         if p_obj:
             p_obj.select_set(True)
+
+
+def bake_scxml_on_depsgraph_update(scene: bpy.types.Scene, depsgraph: bpy.types.Depsgraph):
+    logging.info(f"{str(scene)}, {str(depsgraph)}")
+    for update in depsgraph.updates:
+        if isinstance(update.id, bpy.types.Scene):
+            _x["self"].send("scene.update")  # type: ignore
+
+
+def bake_scxml_on_bake_changed(scene: bpy.types.Scene):
+    logging.info(f"{str(scene)}")
+    _x["self"].send("bake.changed")  # type: ignore
 
 
 class SCXML_PT_Bake(bpy.types.Panel):
@@ -252,12 +259,19 @@ def register():
         bpy.utils.register_class(cls)
     bpy.types.WindowManager.scxml_bake = bpy.props.PointerProperty(type=ScxmlBakeProps)
 
-    bpy.app.handlers.depsgraph_update_post.append(g_DATA.on_depsgraph_update)
+    bpy.app.handlers.depsgraph_update_post.append(bake_scxml_on_depsgraph_update)
+
+    bpy.app.handlers.object_bake_cancel.append(bake_scxml_on_bake_changed)
+    bpy.app.handlers.object_bake_pre.append(bake_scxml_on_bake_changed)
+    bpy.app.handlers.object_bake_complete.append(bake_scxml_on_bake_changed)
 
 
 def unregister():
 
-    bpy.app.handlers.depsgraph_update_post.remove(g_DATA.on_depsgraph_update)
+    bpy.app.handlers.depsgraph_update_post.remove(bake_scxml_on_depsgraph_update)
+    bpy.app.handlers.object_bake_cancel.remove(bake_scxml_on_bake_changed)
+    bpy.app.handlers.object_bake_pre.remove(bake_scxml_on_bake_changed)
+    bpy.app.handlers.object_bake_complete.remove(bake_scxml_on_bake_changed)
 
     del bpy.types.WindowManager.scxml_bake
     for cls in reversed(scxml_classes):

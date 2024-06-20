@@ -89,7 +89,7 @@ class WM_OT_ScxmlStart(bpy.types.Operator):
         p_scxml: ScxmlSettings = wm.scxml
         global sm
         sm = UdpStateMachine(
-            p_scxml.state_machine_filepath,
+            p_scxml.get_state_machine_filepath_abs(),
             )
         sm.start()
         return {'FINISHED'}
@@ -407,6 +407,9 @@ class ScxmlSettings(bpy.types.PropertyGroup):
         subtype='FILE_PATH',
         default=""
     )
+
+    def get_state_machine_filepath_abs(self):
+        return bpy.path.abspath(self.state_machine_filepath)
 
 
 class SCXML_UL_W3C(bpy.types.UIList):
