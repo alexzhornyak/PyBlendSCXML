@@ -131,11 +131,11 @@ class StateMachine(object):
                 if self.compiler.filedir else self.compiler.filename)
             self.logger.info("Starting %s" % doc)
         self._start()
-        bpy.app.timers.register(self.interpreter.mainEventLoop)
+        bpy.app.timers.register(self.interpreter.mainEventLoop, persistent=True)
 
     def start_threaded(self):
         self._start()
-        bpy.app.timers.register(self.interpreter.mainEventLoop)
+        bpy.app.timers.register(self.interpreter.mainEventLoop, persistent=True)
 
     def isFinished(self):
         '''Returns True if the statemachine has reached it

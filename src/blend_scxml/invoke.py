@@ -108,7 +108,7 @@ class InvokeSCXML(BaseInvoke):
         dispatcher.send("created", sender=self, sm=self.sm)
 
         self.sm._start_invoke(self.invokeid)
-        bpy.app.timers.register(self.sm.interpreter.mainEventLoop)
+        bpy.app.timers.register(self.sm.interpreter.mainEventLoop, persistent=True)
 
     def send(self, eventobj):
         if self.sm and not self.sm.isFinished():

@@ -314,7 +314,7 @@ class Compiler(object):
                             def cancel():
                                 if not sm.isFinished():
                                     sm.cancel()
-                            bpy.app.timers.register(cancel, first_interval=timeout)
+                            bpy.app.timers.register(cancel, first_interval=timeout, persistent=True)
                     except AssertionError:
                         raise ExecutableError(
                             node,
@@ -523,7 +523,7 @@ class Compiler(object):
 
         if delay:
             self.timer_mapping[sendid] = sender
-            bpy.app.timers.register(sender, first_interval=delay)
+            bpy.app.timers.register(sender, first_interval=delay, persistent=True)
             pass
         else:
             try:

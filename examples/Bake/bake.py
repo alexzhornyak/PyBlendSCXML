@@ -4,9 +4,28 @@ import logging
 from datetime import timedelta
 
 
+class ScxmlBakeLogicException(Exception):
+    pass
+
+
 class ScxmlData:
     t_BAKED_OBJECTS = []
     s_BAKE_OBJECT = ""
+    s_BAKE_ERROR = ""
+
+    @bpy.app.handlers.persistent
+    def bake_scxml_on_depsgraph_update(self, scene: bpy.types.Scene, depsgraph: bpy.types.Depsgraph):
+        logging.info(f"Depsgraph update: {str(scene)}, {str(depsgraph)}")
+        for update in depsgraph.updates:
+            if isinstance(update.id, bpy.types.Scene):
+                # NOTE: we should release and do not change anything inside 'depsgraph_update'
+                bpy.app.timers.register(lambda: _x["self"].send("scene.update"))  # type: ignore
+                break
+
+    @bpy.app.handlers.persistent
+    def bake_scxml_on_bake_changed(self, obj: bpy.types.Object, _):
+        logging.info(f"Bake changed: {str(obj)}")
+        _x["self"].send("bake.changed")  # type: ignore
 
 
 g_DATA = ScxmlData()
@@ -14,7 +33,7 @@ g_DATA = ScxmlData()
 
 def FormatTimeStr(milliseconds):
     # Check if milliseconds is zero
-    if milliseconds == 0:
+    if milliseconds <= 0:
         return "00:00.000"
 
     # Convert milliseconds to timedelta
@@ -58,63 +77,78 @@ def is_bake_completed():
 
 
 def bake_start():
-    ctx = bpy.context
-    wm = ctx.window_manager
-    p_scxml_props: ScxmlBakeProps = wm.scxml_bake
+    try:
+        ctx = bpy.context
+        wm = ctx.window_manager
+        p_scxml_props: ScxmlBakeProps = wm.scxml_bake
 
-    g_DATA.s_BAKE_OBJECT = g_DATA.t_BAKED_OBJECTS.pop(0)
+        g_DATA.s_BAKE_OBJECT = g_DATA.t_BAKED_OBJECTS.pop(0)
+        g_DATA.s_BAKE_ERROR = ""
 
-    idx = p_scxml_props.objects.find(g_DATA.s_BAKE_OBJECT)
-    if idx not in range(len(p_scxml_props.objects)):
-        raise RuntimeError(f"Can not find internal object:{g_DATA.s_BAKE_OBJECT}")
+        idx = p_scxml_props.objects.find(g_DATA.s_BAKE_OBJECT)
+        if idx not in range(len(p_scxml_props.objects)):
+            raise ScxmlBakeLogicException(f"Can not find internal object:{g_DATA.s_BAKE_OBJECT}")
 
-    p_scxml_props.objects_index = idx
-    p_obj_item: ScxmlBakeItem = p_scxml_props.objects[idx]
-    p_obj: bpy.types.Object = ctx.view_layer.objects.get(g_DATA.s_BAKE_OBJECT)
-    if p_obj is None:
-        raise RuntimeError(f"Can not find view layer object:{g_DATA.s_BAKE_OBJECT}")
-    p_obj_item.bake_state = 'BAKING'
-    p_obj_item.bake_time_start = timer()
+        p_scxml_props.objects_index = idx
+        p_obj_item: ScxmlBakeItem = p_scxml_props.objects[idx]
+        p_obj: bpy.types.Object = ctx.view_layer.objects.get(g_DATA.s_BAKE_OBJECT)
+        if p_obj is None:
+            raise ScxmlBakeLogicException(f"Can not find view layer object:{g_DATA.s_BAKE_OBJECT}")
+        p_obj_item.bake_state = 'BAKING'
+        p_obj_item.bake_time_start = timer()
 
-    bpy.ops.object.select_all(action='DESELECT')
-    p_obj.select_set(True)
-    ctx.view_layer.objects.active = p_obj
-    bpy.ops.object.bake('INVOKE_DEFAULT')
+        bpy.ops.object.select_all(action='DESELECT')
+        p_obj.select_set(True)
+        ctx.view_layer.objects.active = p_obj
+        bpy.ops.object.bake('INVOKE_DEFAULT')
+    except ScxmlBakeLogicException as e:
+        g_DATA.s_BAKE_ERROR = str(e)
+        logging.error(g_DATA.s_BAKE_ERROR)
+        _x["self"].send("bake.error")  # type: ignore
 
 
 def bake_completed():
     if not g_DATA.s_BAKE_OBJECT:
         return
 
-    ctx = bpy.context
-    wm = ctx.window_manager
-    p_scxml_props: ScxmlBakeProps = wm.scxml_bake
+    try:
+        ctx = bpy.context
+        wm = ctx.window_manager
+        p_scxml_props: ScxmlBakeProps = wm.scxml_bake
 
-    idx = p_scxml_props.objects.find(g_DATA.s_BAKE_OBJECT)
-    if idx not in range(len(p_scxml_props.objects)):
-        raise RuntimeError(f"Can not find internal object:{g_DATA.s_BAKE_OBJECT}")
+        idx = p_scxml_props.objects.find(g_DATA.s_BAKE_OBJECT)
+        if idx not in range(len(p_scxml_props.objects)):
+            raise ScxmlBakeLogicException(f"Can not find internal object:{g_DATA.s_BAKE_OBJECT}")
 
-    p_obj_item: ScxmlBakeItem = p_scxml_props.objects[idx]
-    p_obj_item.bake_state = 'COMPLETED'
-    p_obj_item.bake_time = FormatTimeStr((timer() - p_obj_item.bake_time_start) * 1000)
-    update_view()
+        p_obj_item: ScxmlBakeItem = p_scxml_props.objects[idx]
+        p_obj_item.bake_state = 'COMPLETED'
+        p_obj_item.bake_time = FormatTimeStr((timer() - p_obj_item.bake_time_start) * 1000)
+    except ScxmlBakeLogicException as e:
+        g_DATA.s_BAKE_ERROR = str(e)
+        logging.error(g_DATA.s_BAKE_ERROR)
+        _x["self"].send("bake.error")  # type: ignore
 
 
 def bake_item_update():
     if not g_DATA.s_BAKE_OBJECT:
         return
 
-    ctx = bpy.context
-    wm = ctx.window_manager
-    p_scxml_props: ScxmlBakeProps = wm.scxml_bake
+    try:
+        ctx = bpy.context
+        wm = ctx.window_manager
+        p_scxml_props: ScxmlBakeProps = wm.scxml_bake
 
-    idx = p_scxml_props.objects.find(g_DATA.s_BAKE_OBJECT)
-    logging.info(f"obj:{g_DATA.s_BAKE_OBJECT}, idx:{idx}")
-    if idx not in range(len(p_scxml_props.objects)):
-        raise RuntimeError(f"Can not find internal object:{g_DATA.s_BAKE_OBJECT}")
+        idx = p_scxml_props.objects.find(g_DATA.s_BAKE_OBJECT)
+        logging.info(f"obj:{g_DATA.s_BAKE_OBJECT}, idx:{idx}")
+        if idx not in range(len(p_scxml_props.objects)):
+            raise ScxmlBakeLogicException(f"Can not find internal object:{g_DATA.s_BAKE_OBJECT}")
 
-    p_obj_item: ScxmlBakeItem = p_scxml_props.objects[idx]
-    p_obj_item.bake_time = FormatTimeStr((timer() - p_obj_item.bake_time_start) * 1000)
+        p_obj_item: ScxmlBakeItem = p_scxml_props.objects[idx]
+        p_obj_item.bake_time = FormatTimeStr((timer() - p_obj_item.bake_time_start) * 1000)
+    except ScxmlBakeLogicException as e:
+        g_DATA.s_BAKE_ERROR = str(e)
+        logging.error(g_DATA.s_BAKE_ERROR)
+        _x["self"].send("bake.error")  # type: ignore
 
 
 def prepare_baking():
@@ -133,7 +167,6 @@ def prepare_baking():
                 p_scxml_props.objects.add()
                 p_obj_item: ScxmlBakeItem = p_scxml_props.objects[-1]
                 p_obj_item.name = obj.name
-    update_view()
 
 
 def exit_baking():
@@ -144,18 +177,6 @@ def exit_baking():
         p_obj: bpy.types.Object = ctx.view_layer.objects.get(item.name)
         if p_obj:
             p_obj.select_set(True)
-
-
-def bake_scxml_on_depsgraph_update(scene: bpy.types.Scene, depsgraph: bpy.types.Depsgraph):
-    logging.info(f"{str(scene)}, {str(depsgraph)}")
-    for update in depsgraph.updates:
-        if isinstance(update.id, bpy.types.Scene):
-            _x["self"].send("scene.update")  # type: ignore
-
-
-def bake_scxml_on_bake_changed(scene: bpy.types.Scene):
-    logging.info(f"{str(scene)}")
-    _x["self"].send("bake.changed")  # type: ignore
 
 
 class SCXML_PT_Bake(bpy.types.Panel):
@@ -201,6 +222,12 @@ class SCXML_PT_Bake(bpy.types.Panel):
         op.event_name = "bake.cancel"
 
         if In("BakeAllDone"):  # type: ignore
+            if In("BakeError"):  # type: ignore
+                col = layout.column(align=True)
+                col.alert = True
+                col.label(text="Bake Process Failed:")
+                col.label(text=g_DATA.s_BAKE_ERROR)
+
             row = layout.row(align=True)
             op = row.operator(WM_OT_ScxmlBakeTrigger.bl_idname, text="Bake Reset")
             op.event_name = "bake.reset"
@@ -259,19 +286,19 @@ def register():
         bpy.utils.register_class(cls)
     bpy.types.WindowManager.scxml_bake = bpy.props.PointerProperty(type=ScxmlBakeProps)
 
-    bpy.app.handlers.depsgraph_update_post.append(bake_scxml_on_depsgraph_update)
+    bpy.app.handlers.depsgraph_update_post.append(g_DATA.bake_scxml_on_depsgraph_update)
 
-    bpy.app.handlers.object_bake_cancel.append(bake_scxml_on_bake_changed)
-    bpy.app.handlers.object_bake_pre.append(bake_scxml_on_bake_changed)
-    bpy.app.handlers.object_bake_complete.append(bake_scxml_on_bake_changed)
+    bpy.app.handlers.object_bake_cancel.append(g_DATA.bake_scxml_on_bake_changed)
+    bpy.app.handlers.object_bake_pre.append(g_DATA.bake_scxml_on_bake_changed)
+    bpy.app.handlers.object_bake_complete.append(g_DATA.bake_scxml_on_bake_changed)
 
 
 def unregister():
 
-    bpy.app.handlers.depsgraph_update_post.remove(bake_scxml_on_depsgraph_update)
-    bpy.app.handlers.object_bake_cancel.remove(bake_scxml_on_bake_changed)
-    bpy.app.handlers.object_bake_pre.remove(bake_scxml_on_bake_changed)
-    bpy.app.handlers.object_bake_complete.remove(bake_scxml_on_bake_changed)
+    bpy.app.handlers.depsgraph_update_post.remove(g_DATA.bake_scxml_on_depsgraph_update)
+    bpy.app.handlers.object_bake_cancel.remove(g_DATA.bake_scxml_on_bake_changed)
+    bpy.app.handlers.object_bake_pre.remove(g_DATA.bake_scxml_on_bake_changed)
+    bpy.app.handlers.object_bake_complete.remove(g_DATA.bake_scxml_on_bake_changed)
 
     del bpy.types.WindowManager.scxml_bake
     for cls in reversed(scxml_classes):

@@ -9,7 +9,7 @@ def FormatTimeStr(milliseconds):
     delta = timedelta(milliseconds=milliseconds)
 
     # Check if milliseconds is zero
-    if milliseconds == 0:
+    if milliseconds <= 0:
         return "00:00.000"
 
     # Extract components
@@ -194,7 +194,10 @@ class ScxmlStopWatchProps(bpy.types.PropertyGroup):
 
 
 class SCXML_UL_StopWatchList(bpy.types.UIList):
-    use_filter_sort_reverse = True
+    def __init__(self) -> None:
+        super().__init__()
+        self.use_filter_show = False
+        self.use_filter_sort_reverse = True
 
     def draw_item(self, context, layout: bpy.types.UILayout, data, item: ScxmlStopWatchItem, icon, active_data, active_propname, index):
         layout.prop(item, "lapIndex", text="")

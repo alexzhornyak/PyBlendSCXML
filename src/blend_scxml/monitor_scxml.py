@@ -231,7 +231,7 @@ class UdpTestingMachine(UdpMonitorMachine):
                             trigger_type = int(elem.get("type", 0))
                             p_data_map[s_key] = get_trigger_value(s_val, trigger_type)
 
-                    bpy.app.timers.register(partial(self.send, s_event, p_data_value if b_is_context else p_data_map))
+                    bpy.app.timers.register(partial(self.send, s_event, p_data_value if b_is_context else p_data_map), persistent=True)
 
                 except Exception as e:
                     logger.error(str(e))
