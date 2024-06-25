@@ -18,6 +18,8 @@ This file is part of pyscxml.
     @contact: johan@roxendal.com
 '''
 
+# NOTE: modified by Alex Zhornyak, alexander.zhornyak@gmail.com
+
 import bpy
 
 import logging

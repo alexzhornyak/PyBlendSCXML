@@ -19,7 +19,12 @@ This file is part of pyscxml.
 
 '''
 
+# NOTE: modified by Alex Zhornyak, alexander.zhornyak@gmail.com
+
 import bpy
+
+import re
+from functools import partial
 
 from .node import (
     Final,
@@ -31,9 +36,7 @@ from .node import (
     State, Transition,
     # SCXMLNode
 )
-import re
-# import sys
-from functools import partial
+
 from .messaging import get_document
 
 # author="Patrick K. O'Brien and contributors",

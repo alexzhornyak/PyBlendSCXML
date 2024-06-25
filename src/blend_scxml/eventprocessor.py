@@ -5,6 +5,8 @@ Created on Dec 6, 2010
 
 '''
 
+# NOTE: modified by Alex Zhornyak, alexander.zhornyak@gmail.com
+
 import xml.etree.ElementTree as etree
 
 import pickle

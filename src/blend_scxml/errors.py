@@ -4,6 +4,8 @@ Created on Nov 23, 2011
 @author: Johan Roxendal
 '''
 
+# NOTE: modified by Alex Zhornyak, alexander.zhornyak@gmail.com
+
 from xml.etree import ElementTree as etree
 
 

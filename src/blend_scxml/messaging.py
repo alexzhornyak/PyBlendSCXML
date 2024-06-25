@@ -4,6 +4,8 @@ Created on Nov 4, 2010
 @author: johan
 '''
 
+# NOTE: modified by Alex Zhornyak, alexander.zhornyak@gmail.com
+
 import os
 import urllib
 from urllib.parse import unquote, urlparse

@@ -3,6 +3,9 @@ Created on Nov 1, 2011
 
 @author: johan
 '''
+
+# NOTE: modified by Alex Zhornyak, alexander.zhornyak@gmail.com
+
 import sys
 import traceback
 import re
