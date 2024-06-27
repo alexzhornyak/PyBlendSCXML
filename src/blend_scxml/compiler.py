@@ -45,7 +45,7 @@ from .messaging import get_document
 # license="BSD"
 from .louie import dispatcher
 
-import urllib
+import urllib.request
 from .eventprocessor import Event, SCXMLEventProcessor as Processor, ScxmlMessage
 from .invoke import InvokeWrapper, InvokeSCXML
 from xml.parsers.expat import ExpatError

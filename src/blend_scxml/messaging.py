@@ -7,7 +7,7 @@ Created on Nov 4, 2010
 # NOTE: modified by Alex Zhornyak, alexander.zhornyak@gmail.com
 
 import os
-import urllib
+import urllib.request
 from urllib.parse import unquote, urlparse
 from pathlib import Path
 
