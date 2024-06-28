@@ -1,8 +1,8 @@
 
 from setuptools import setup
 
-version = "1.0.0.6"
-filename = "1.0.0.6-20240627"
+version = "1.0.0.7"
+filename = "1.0.0.7-20240628"
 
 setup(
     name="py_blend_scxml",

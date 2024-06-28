@@ -28,10 +28,11 @@ from functools import partial
 import threading
 import json
 from dataclasses import dataclass
+import logging
 
 from .py_blend_scxml import StateMachine, default_logfunction
+from .consts import DispatcherConstants, PYSCXML_MONITOR_LITERAL
 from .louie import dispatcher
-from . import logger
 
 
 @dataclass
@@ -90,6 +91,7 @@ class UdpMonitorMachine(StateMachine):
         self._monitor_enabled = False
 
         self.monitor_settings = monitor_settings
+        self.monitor_logger = logging.getLogger(PYSCXML_MONITOR_LITERAL)
 
         super().__init__(
             source,
@@ -108,13 +110,13 @@ class UdpMonitorMachine(StateMachine):
         if value != self._monitor_enabled:
             self._monitor_enabled = value
             if self._monitor_enabled:
-                dispatcher.connect(self.send_enter, "signal_enter_state", self.interpreter)
-                dispatcher.connect(self.send_exit, "signal_exit_state", self.interpreter)
-                dispatcher.connect(self.send_taking_transition, "signal_taking_transition", self.interpreter)
+                dispatcher.connect(self.send_enter, DispatcherConstants.enter_state, self.interpreter)
+                dispatcher.connect(self.send_exit, DispatcherConstants.exit_state, self.interpreter)
+                dispatcher.connect(self.send_taking_transition, DispatcherConstants.taking_transition, self.interpreter)
             else:
-                dispatcher.disconnect(self.send_enter, "signal_enter_state", self.interpreter)
-                dispatcher.disconnect(self.send_exit, "signal_exit_state", self.interpreter)
-                dispatcher.disconnect(self.send_taking_transition, "signal_taking_transition", self.interpreter)
+                dispatcher.disconnect(self.send_enter, DispatcherConstants.enter_state, self.interpreter)
+                dispatcher.disconnect(self.send_exit, DispatcherConstants.exit_state, self.interpreter)
+                dispatcher.disconnect(self.send_taking_transition, DispatcherConstants.taking_transition, self.interpreter)
 
     def send_udp(self, message: str):
         sock = socket.socket(
@@ -128,7 +130,7 @@ class UdpMonitorMachine(StateMachine):
         s_name = sender.dm.get("_name", "")
         if not s_name:
             try:
-                s_name = Path(sender.dm.self.filename).stem()
+                s_name = Path(sender.dm.self.filename).stem
             except Exception:
                 pass
         return s_name
@@ -136,7 +138,7 @@ class UdpMonitorMachine(StateMachine):
     def send_enter(self, sender, state):
         s_machine = self.get_scxml_name(sender)
 
-        logger.info(f"enter:{s_machine} {state}")
+        self.monitor_logger.info(f"machine: {s_machine} enter: {state}")
         # NOTE: ScxmlEditor does not intercept Blender output without it
         sys.stdout.flush()
 
@@ -144,12 +146,13 @@ class UdpMonitorMachine(StateMachine):
 
     def send_exit(self, sender, state):
         s_machine = self.get_scxml_name(sender)
-        logger.info(f"exit:{s_machine} {state}")
+
+        self.monitor_logger.info(f"machine: {s_machine} exit: {state}")
         self.send_udp(f"4@{s_machine}@{state}")
 
     def send_taking_transition(self, sender, state, transition_index):
         s_machine = self.get_scxml_name(sender)
-        logger.info(f"transition:{s_machine} {transition_index}")
+        self.monitor_logger.info(f"machine: {s_machine} transition: {state} index: {transition_index}")
         self.send_udp(f"12@{s_machine}@{state}|{transition_index}")
 
 
@@ -234,9 +237,9 @@ class UdpTestingMachine(UdpMonitorMachine):
                     bpy.app.timers.register(partial(self.send, s_event, p_data_value if b_is_context else p_data_map), persistent=True)
 
                 except Exception as e:
-                    logger.error(str(e))
+                    self.monitor_logger.error(str(e))
         except Exception as e:
-            logger.error(f"Error:{str(e)}")
+            self.monitor_logger.error(f"Error:{str(e)}")
         finally:
             self.udp_socket.close()
-            logger.info("socket was closed")
+            self.monitor_logger.info("socket was closed")

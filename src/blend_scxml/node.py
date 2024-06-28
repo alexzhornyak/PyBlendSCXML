@@ -19,6 +19,8 @@ This file is part of pyscxml.
     along with pyscxml.  If not, see <http://www.gnu.org/licenses/>.
 '''
 
+# NOTE: modified by Alex Zhornyak, alexander.zhornyak@gmail.com
+
 
 class SCXMLNode(object):
     def __init__(self, id, parent, n):
@@ -115,7 +117,7 @@ class History(object):
 
 
 class Transition(Executable):
-    def __init__(self, source):
+    def __init__(self, source: State):
         Executable.__init__(self)
 
         self.source = source
@@ -160,7 +162,7 @@ class SCXMLDocument(object):
     def __init__(self):
         self.initial = None
         self.stateDict = {}
-        self._rootState = None
+        self._rootState: State = None
         self.name = ""
         self.binding = None
 
@@ -171,7 +173,7 @@ class SCXMLDocument(object):
     def getRoot(self):
         return self._rootState
 
-    rootState = property(getRoot, setRoot)
+    rootState: State = property(getRoot, setRoot)
 
     def addNode(self, node):
         assert hasattr(node, "id") and node.id

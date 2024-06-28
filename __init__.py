@@ -22,7 +22,7 @@
 import bpy
 import traceback
 
-import logging
+import logging.config
 import os
 from pathlib import Path
 from timeit import default_timer as timer
@@ -31,6 +31,7 @@ from collections import defaultdict
 
 from .src.blend_scxml.monitor_scxml import UdpMonitorMachine
 from .src.blend_scxml.louie import dispatcher
+from .src.blend_scxml.consts import DispatcherConstants, PYSCXML_LOGGING_CONFIG
 
 bl_info = {
     "name": "PyBlendSCXML",
@@ -42,9 +43,6 @@ bl_info = {
     "warning": "This addon uses relative path that is in repository!",
     "category": "Window",
 }
-
-
-logging.basicConfig(level=logging.NOTSET)
 
 
 class UdpStateMachine(UdpMonitorMachine):
@@ -243,6 +241,7 @@ class VIEW3D_PT_Scxml(bpy.types.Panel):
 class WM_OT_ScxmlTestW3C(bpy.types.Operator):
     bl_idname = "wm.scxml_test_w3c"
     bl_label = "Test W3C"
+    bl_description = "Start-stop testing SCXML W3C\n*Select test to start"
 
     _timer = None
     _start_time = 0
@@ -268,8 +267,7 @@ class WM_OT_ScxmlTestW3C(bpy.types.Operator):
                     wm.scxml.w3c_tests_running = False
                     return
 
-            print("EXIT:", sender, final)
-            if p_scxml.w3c_tests_index < len(p_scxml.w3c_tests) - 2:
+            if p_scxml.w3c_tests_index < len(p_scxml.w3c_tests) - 1:
                 p_scxml.w3c_tests_index += 1
             else:
                 wm.scxml.w3c_tests_running = False
@@ -294,7 +292,7 @@ class WM_OT_ScxmlTestW3C(bpy.types.Operator):
                     try:
                         self._machine = UdpMonitorMachine(p_test.filepath)
                         self._start_time = timer()
-                        dispatcher.connect(self.on_sm_exit, "signal_exit", self._machine.interpreter)
+                        dispatcher.connect(self.on_sm_exit, DispatcherConstants.exit, self._machine.interpreter)
                         self._machine.start()
                     except Exception as e:
                         p_test.state = 'ERROR'
@@ -326,19 +324,35 @@ class WM_OT_ScxmlTestW3C(bpy.types.Operator):
 
         return {'PASS_THROUGH'}
 
-    def execute(self, context):
+    def invoke(self, context: bpy.types.Context, event: bpy.types.Event):
         wm = context.window_manager
-        if wm.scxml.w3c_tests_running:
-            wm.scxml.w3c_tests_running = False
-            return {'FINISHED'}
+
+        p_scxml: ScxmlSettings = wm.scxml
+
+        if p_scxml.w3c_tests_running:
+            p_scxml.w3c_tests_running = False
+            return {'CANCELLED'}
+
+        n_tests_count = len(p_scxml.w3c_tests)
+        if n_tests_count == 0:
+            WM_OT_ScxmlTestW3C.update_tests_list()
+
+        n_tests_count = len(p_scxml.w3c_tests)
+
+        if n_tests_count == 0:
+            self.report({'ERROR'}, "W3C tests are not loaded!")
+            return {'CANCELLED'}
+
+        if p_scxml.w3c_tests_index not in range(n_tests_count):
+            p_scxml.w3c_tests_index = 0
 
         self._timer = wm.event_timer_add(0.1, window=context.window)
         wm.modal_handler_add(self)
 
-        for idx in range(wm.scxml.w3c_tests_index, len(wm.scxml.w3c_tests), 1):
-            p_test = wm.scxml.w3c_tests[idx]
+        for idx in range(p_scxml.w3c_tests_index, n_tests_count, 1):
+            p_test = p_scxml.w3c_tests[idx]
             p_test.clear()
-        wm.scxml.w3c_tests_running = True
+        p_scxml.w3c_tests_running = True
 
         return {'RUNNING_MODAL'}
 
@@ -350,6 +364,39 @@ class WM_OT_ScxmlTestW3C(bpy.types.Operator):
         wm.scxml.w3c_tests_running = False
         if hasattr(context, "area") and context.area:
             context.area.tag_redraw()
+
+    @classmethod
+    def update_tests_list(cls):
+        base_dir = os.path.dirname(__file__)
+        wm = bpy.context.window_manager
+        wm.scxml.w3c_tests.clear()
+
+        # NOTE: Basic HTTP tests are not supported!
+        basichttp_tests = (
+            "test201.scxml",
+            "test509.scxml",
+            "test510.scxml",
+            "test518.scxml",
+            "test519.scxml",
+            "test520.scxml",
+            "test522.scxml",
+            "test531.scxml",
+            "test532.scxml",
+            "test534.scxml",
+            "test567.scxml",
+            "test577.scxml"
+        )
+
+        for entry in sorted(Path(os.path.join(base_dir, "w3c_tests")).glob("*.scxml")):
+            file = str(entry)
+
+            testname = Path(file).name
+
+            if "sub" not in file and testname not in basichttp_tests:
+                wm.scxml.w3c_tests.add()
+                p_test: ScxmlTest = wm.scxml.w3c_tests[-1]
+                p_test.name = testname
+                p_test.filepath = file
 
 
 class ScxmlTest(bpy.types.PropertyGroup):
@@ -445,41 +492,14 @@ classes = (
 
 
 def register():
+    logging.config.dictConfig(PYSCXML_LOGGING_CONFIG)
+
     for cls in classes:
         bpy.utils.register_class(cls)
 
     bpy.types.WindowManager.scxml = bpy.props.PointerProperty(type=ScxmlSettings)
 
-    base_dir = os.path.dirname(__file__)
-    wm = bpy.context.window_manager
-    wm.scxml.w3c_tests.clear()
-
-    # NOTE: Basic HTTP tests are not supported!
-    basichttp_tests = (
-        "test201.scxml",
-        "test509.scxml",
-        "test510.scxml",
-        "test518.scxml",
-        "test519.scxml",
-        "test520.scxml",
-        "test522.scxml",
-        "test531.scxml",
-        "test532.scxml",
-        "test534.scxml",
-        "test567.scxml",
-        "test577.scxml"
-    )
-
-    for entry in sorted(Path(os.path.join(base_dir, "w3c_tests")).glob("*.scxml")):
-        file = str(entry)
-
-        testname = Path(file).name
-
-        if "sub" not in file and testname not in basichttp_tests:
-            wm.scxml.w3c_tests.add()
-            p_test: ScxmlTest = wm.scxml.w3c_tests[-1]
-            p_test.name = testname
-            p_test.filepath = file
+    WM_OT_ScxmlTestW3C.update_tests_list()
 
 
 def unregister():

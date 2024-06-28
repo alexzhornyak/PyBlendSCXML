@@ -24,7 +24,11 @@ This file is part of pyscxml.
 import bpy
 
 import re
+import os
+import logging
+from pathlib import Path
 from functools import partial
+from dataclasses import dataclass
 
 from .node import (
     Final,
@@ -37,15 +41,12 @@ from .node import (
     # SCXMLNode
 )
 
-from .messaging import get_document
-
 # author="Patrick K. O'Brien and contributors",
 # url="https://github.com/11craft/louie/",
 # download_url="https://pypi.python.org/pypi/Louie",
 # license="BSD"
 from .louie import dispatcher
 
-import urllib.request
 from .eventprocessor import Event, SCXMLEventProcessor as Processor, ScxmlMessage
 from .invoke import InvokeWrapper, InvokeSCXML
 from xml.parsers.expat import ExpatError
@@ -70,6 +71,10 @@ from .errors import (
     IllegalLocationError
 )
 from queue import Queue
+
+# MIT License
+# Copyright (c) 2020 Polydojo, Inc.
+# https://github.com/polydojo/dotsi
 from .dotsi import Dict
 
 
@@ -88,27 +93,23 @@ def split_ns(node):
 
 
 ns = "http://www.w3.org/2005/07/scxml"
-pyscxml_ns = "http://code.google.com/p/pyscxml"
 tagsForTraversal = ["scxml", "state", "parallel", "history", "final", "transition", "invoke", "onentry", "onexit", "datamodel"]
 tagsForTraversal = [prepend_ns(tag) for tag in tagsForTraversal]
 custom_exec_mapping = {}
 preprocess_mapping = {}
 datamodel_mapping = {
     "python": PythonDataModel,
-    "null": PythonDataModel,  # probably shouldn't allow script in the null datamodel
+    "null": PythonDataModel,  # NOTE: probably shouldn't allow script in the null datamodel
 }
 custom_sendtype_mapping = {}
 
-# FIXME
-# fns = etree.FunctionNamespace(None)
 
-
-def in_func(context, x):
-    return context.context_node._parent.self.interpreter.In(x)
-
-
-# FIXME
-# fns["In"] = in_func
+@dataclass
+class ContentDocument:
+    filepath: str = ""
+    filedir: str = ""
+    filename: str = ""
+    content: str = ""
 
 
 class Compiler(object):
@@ -116,15 +117,12 @@ class Compiler(object):
     def __init__(self):
         self.doc = SCXMLDocument()
 
-        #        self.setSessionId()
         # used by data passed to invoked processes
         self.initData = Dict()
         self.script_src = {}
         self.datamodel = None
         self.filedir = ""
         self.filename = ""
-        #        self.sourceline_mapping = {}
-
         self.log_function = None
         self.strict_parse = False
         self.timer_mapping = {}
@@ -133,6 +131,7 @@ class Compiler(object):
         self.invokeid_counter = 0
         self.sendid_counter = 0
         self.parentId = None
+        self.logger: logging.Logger = None
 
     def setupDatamodel(self, datamodel):
         self.datamodel = datamodel
@@ -215,11 +214,7 @@ class Compiler(object):
                     eventName = node.get("event").split(".")
                     self.interpreter.raiseFunction(eventName, {})
                 elif node_name == "send":
-                    #                    if not hasattr(node, "id_n"): node.id_n = 0
-                    #                    else: node.id_n += 1
                     sendid = node.get("id", "send_id_%s_%s" % (id(node), self.sendid_counter))
-                    self.sendid_counter += 1
-                    #                     sendid = "broken"
                     try:
                         self.parseSend(node, sendid)
                     except AttributeEvalError:
@@ -282,52 +277,6 @@ class Compiler(object):
                             self.do_execute_content(node)
                         except Exception as e:
                             raise ExecutableContainerError(e, node)
-            elif node_ns == pyscxml_ns:
-                if node_name == "start_session":
-                    xml = None
-                    # TODO: why are we using both parseData and parseContent here?
-                    data = self.parseData(node, getContent=False)
-                    contentNode = node.find(prepend_ns("content"))
-                    if contentNode is not None:
-                        xml = self.parseContent(contentNode)
-                        if isinstance(xml, etree.Element):
-                            xml = etree.tostring(xml)
-                        else:
-                            raise Exception(F"Error when parsing contentNode, content is {xml}")
-                    elif node.get("expr"):
-                        try:
-                            s_expr = node.get("expr")
-                            xml = self.getExprValue(F"({s_expr})")
-                        except Exception as e:
-                            xml_str = etree.tostring(node, encoding='unicode')
-                            e = ExecutableError(
-                                node,
-                                f"An expr error caused the start_session to fail on line {xml_str}")
-                            self.logger.error(str(e))
-                            self.raiseError("error.execution", e)
-                    elif self.parseAttr(node, "src"):
-                        xml = urllib.request.urlopen(self.parseAttr(node, "src")).read()
-                    try:
-                        multisession = self.dm.sessions
-                        sm = multisession.make_session(self.parseAttr(node, "sessionid"), xml)
-                        sm.compiler.initData = Dict(data)
-                        sm.start_threaded()
-                        timeout = self.parseCSSTime(self.parseAttr(node, "timeout", "0s"))
-                        if timeout:
-                            def cancel():
-                                if not sm.isFinished():
-                                    sm.cancel()
-                            bpy.app.timers.register(cancel, first_interval=timeout, persistent=True)
-                    except AssertionError:
-                        raise ExecutableError(
-                            node,
-                            "You supplied no xml for <pyscxml:start_session /> "
-                            "and no default has been declared.")
-                    except KeyError:
-                        raise ExecutableError(
-                            node,
-                            "You can only use the pyscxml:start_session "
-                            "element for documents in a MultiSession enviroment")
             elif node_ns in custom_exec_mapping:
                 # execute functions registered using scxml.pyscxml.custom_executable
                 custom_exec_mapping[node_ns](node, self.dm)
@@ -550,7 +499,6 @@ class Compiler(object):
         self.strict_parse = tree.get("exmode", "lax") == "strict"
         self.doc.binding = tree.get("binding", "early")
         t_items = preprocess(tree)
-        self.is_response = tree.get("{%s}%s" % (pyscxml_ns, "response")) in ("true", "True")
         self.setupDatamodel(tree.get("datamodel", self.default_datamodel))
 
         def init():
@@ -762,7 +710,7 @@ class Compiler(object):
         src_doc = None
 
         if src:
-            src_doc = get_document(src, self.filedir)
+            src_doc = self.get_document(src, self.filedir)
 
         data = self.parseData(node, getContent=False)
 
@@ -907,7 +855,7 @@ class Compiler(object):
             src = node.get("src")
 
             try:
-                p_doc = get_document(src, self.filedir)
+                p_doc = self.get_document(src, self.filedir)
                 return (node, p_doc.content, src)
 
             except Exception as e:
@@ -917,6 +865,41 @@ class Compiler(object):
         for node in nodelist:
             output[node] = download(node)
         return output
+
+    def get_document(self, url, file_dir) -> ContentDocument:
+        import urllib.request
+        from urllib.parse import unquote, urlparse
+
+        url_parsed = urlparse(url)
+        filepath = unquote(url_parsed.path)
+
+        b_is_os = False
+
+        if url_parsed.scheme:
+            if url_parsed.scheme not in {'http', 'https'}:
+                if url_parsed.scheme != 'file':
+                    filepath = os.path.join(url_parsed.scheme + ":", filepath)
+                b_is_os = True
+        else:
+            # NOTE: if only netloc contains info
+            if url_parsed.netloc:
+                if filepath:
+                    filepath = os.path.join(url_parsed.netloc, filepath)
+                else:
+                    filepath = url_parsed.netloc
+            b_is_os = True
+
+        if b_is_os:
+            if not os.path.exists(filepath) and file_dir:
+                filepath = os.path.join(file_dir, filepath)
+
+            url = Path(os.path.abspath(filepath)).as_uri()
+
+        file_dir, filename = os.path.split(os.path.abspath(filepath))
+
+        return ContentDocument(
+            filepath, file_dir, filename,
+            urllib.request.urlopen(url).read().decode(encoding="utf-8"))
 
 
 def preprocess(tree: etree.ElementTree):

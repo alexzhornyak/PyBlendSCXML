@@ -26,16 +26,16 @@ This file is part of pyscxml.
 # NOTE: modified by Alex Zhornyak, alexander.zhornyak@gmail.com
 
 import queue
+import logging
 
 from .node import (
     Final,
     History,
-    # Initial,
-    # Onentry, Onexit,
     Parallel,
-    # SCXMLDocument,
-    State, Transition,
-    SCXMLNode
+    State,
+    SCXMLNode,
+    SCXMLDocument,
+    Transition
 )
 
 from .datastructures import OrderedSet
@@ -46,7 +46,7 @@ from .eventprocessor import Event, ScxmlOriginType
 # download_url="https://pypi.python.org/pypi/Louie",
 # license="BSD"
 from .louie import dispatcher
-from .dispatcher_consts import DispatcherConstants
+from .consts import DispatcherConstants
 
 
 class Interpreter(object):
@@ -70,11 +70,11 @@ class Interpreter(object):
         self.dm = None
         self.invokeId = None
         self.parentId = None
-        self.logger = None
+        self.logger: logging.Logger = None
 
         self.enabledTransitions = None
 
-    def interpret(self, document, invokeId=None):
+    def interpret(self, document: SCXMLDocument, invokeId=None):
         '''Initializes the interpreter given an SCXMLDocument instance'''
 
         self.doc = document

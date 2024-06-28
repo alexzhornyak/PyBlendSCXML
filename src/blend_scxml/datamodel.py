@@ -18,6 +18,10 @@ from .errors import (
 )
 # import logging
 import xml.dom.minidom as minidom
+
+# MIT License
+# Copyright (c) 2020 Polydojo, Inc.
+# https://github.com/polydojo/dotsi
 from .dotsi import Dict
 
 
@@ -67,9 +71,6 @@ class ImperativeDataModel(object):
             self.evalExpr(assignNode.get("location") + "= %s" % assignNode.get("expr"))
         else:
             self[assignNode.get("location")] = self.parseContent(assignNode)
-            # XXX    print "assign", val
-            #        self[assignNode.get("location")] = self.parseContent(assignNode)
-            #        print self[assignNode.get("location")]
 
     def getInnerXML(self, node):
         return etree.tostring(node).split(">", 1)[1].rsplit("<", 1)[0]

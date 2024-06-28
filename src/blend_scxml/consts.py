@@ -20,6 +20,9 @@
 
 # flake8: noqa: E221
 
+import logging
+
+
 class DispatcherConstants:
     internal_event      = "signal_internal_event"
     external_event      = "signal_external_event"
@@ -28,3 +31,51 @@ class DispatcherConstants:
     taking_transition   = "signal_taking_transition"
     new_configuration   = "signal_new_configuration"
     exit                = "signal_exit"
+
+
+class ErrorFilter(logging.Filter):
+    def filter(self, record):
+        return record.levelno < logging.ERROR
+
+
+PYSCXML_LOGGING_CONFIG = {
+    'version': 1,
+    'formatters': {
+        'standard': {
+            'format': '%(levelname)s> %(asctime)s.%(msecs)03d %(name)s: %(message)s',
+            'datefmt': '%H:%M:%S'
+        },
+    },
+    'handlers': {
+        'default': {
+            'level': 'DEBUG',
+            'formatter': 'standard',
+            'class': 'logging.StreamHandler',
+            'stream': 'ext://sys.stdout',
+            'filters': ['error_filter'],
+        },
+        'error': {
+            'level': 'ERROR',
+            'formatter': 'standard',
+            'class': 'logging.StreamHandler',
+            'stream': 'ext://sys.stderr',
+        },
+    },
+    'filters': {
+        'error_filter': {
+            '()': ErrorFilter,
+        },
+    },
+    'loggers': {
+        'pyscxml': {
+            'handlers': ['default', 'error'],
+            'level': 'DEBUG',
+            'propagate': False
+        },
+    }
+}
+
+
+PYSCXML_LITERAL = "pyscxml"
+
+PYSCXML_MONITOR_LITERAL = "pyscxml.monitor"

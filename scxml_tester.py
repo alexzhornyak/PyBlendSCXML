@@ -22,18 +22,19 @@
 import os
 import sys
 import logging
+import logging.config
 
 s_blend_scxml_path = os.path.join(os.path.dirname(__file__), "src")
 sys.path.append(s_blend_scxml_path)
 
 from blend_scxml.monitor_scxml import UdpTestingMachine, UdpMonitorSettings  # noqa: E402
-
-
-logging.basicConfig(level=logging.NOTSET)
+from blend_scxml.consts import PYSCXML_LOGGING_CONFIG, PYSCXML_LITERAL  # noqa: E402
 
 
 if __name__ == "__main__":
-    logger = logging.getLogger("scxml_tester")
+    logging.config.dictConfig(PYSCXML_LOGGING_CONFIG)
+
+    logger = logging.getLogger(f"{PYSCXML_LITERAL}.tester")
 
     monitor_settings = UdpMonitorSettings()
 

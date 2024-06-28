@@ -27,4 +27,4 @@
 
 NAME = "PyBlendSCXML"
 DESCRIPTION = "SCXML parser and interpreter for the Blender"
-VERSION = "1.0.0.6"
+VERSION = "1.0.0.7"

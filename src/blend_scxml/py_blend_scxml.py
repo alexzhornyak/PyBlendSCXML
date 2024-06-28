@@ -32,9 +32,8 @@ from xml.etree import ElementTree as etree
 # download_url="https://pypi.python.org/pypi/Louie",
 # license="BSD"
 from .louie import dispatcher
-from .dispatcher_consts import DispatcherConstants
+from .consts import DispatcherConstants
 
-from .messaging import get_document
 from . import compiler
 from .interpreter import Interpreter, CancelEvent
 
@@ -78,7 +77,7 @@ class StateMachine(object):
 
         self.sessionid = sessionid or "pyscxml_session_" + str(id(self))
         self.interpreter = Interpreter()
-        dispatcher.connect(self.on_exit, "signal_exit", self.interpreter)
+        dispatcher.connect(self.on_exit, DispatcherConstants.exit, self.interpreter)
         self.logger = logging.getLogger("pyscxml.%s" % self.sessionid)
         self.interpreter.logger = logging.getLogger("pyscxml.%s.interpreter" % self.sessionid)
         self.compiler.logger = logging.getLogger("pyscxml.%s.compiler" % self.sessionid)
@@ -91,7 +90,6 @@ class StateMachine(object):
         self.doc.datamodel["_sessionid"] = self.sessionid
         self.doc.datamodel.sessionid = self.sessionid
         self.name = self.doc.name
-        self.is_response = self.compiler.is_response
         if setup_session:
             MultiSession().make_session(self.sessionid, self)
 
@@ -109,9 +107,10 @@ class StateMachine(object):
             self.compiler.filedir = ""
             return uri
         else:
-            p_doc = get_document(uri, self.compiler.filedir)
+            p_doc = self.compiler.get_document(uri, self.compiler.filedir)
             self.compiler.filedir = p_doc.filedir
             self.compiler.filename = p_doc.filename
+
             return p_doc.content
 
     def _start(self):
@@ -258,7 +257,7 @@ class MultiSession(object):
 
         sm.datamodel.sessions = self
         self.set_processors(sm)
-        dispatcher.connect(self.on_sm_exit, "signal_exit", sm)
+        dispatcher.connect(self.on_sm_exit, DispatcherConstants.exit, sm)
         return sm
 
     def set_processors(self, sm):

@@ -10,6 +10,10 @@ Created on Dec 6, 2010
 import xml.etree.ElementTree as etree
 
 import pickle
+
+# MIT License
+# Copyright (c) 2020 Polydojo, Inc.
+# https://github.com/polydojo/dotsi
 from .dotsi import Dict
 
 
